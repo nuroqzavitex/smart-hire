@@ -1,0 +1,108 @@
+name: ci-go
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-go-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      modules: ${{ steps.matrix.outputs.modules }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared:
+              - 'pkg/**'
+              - 'gen/**'
+              - 'go.work'
+              - 'go.work.sum'
+              - '.github/workflows/ci-go.yml'
+            auth:
+              - 'services/auth/**'
+            gateway:
+              - 'services/gateway/**'
+            tools:
+              - 'tools/**'
+      # Changes in pkg/, gen/ (or the workspace) run every module.
+      - name: Build module matrix
+        id: matrix
+        env:
+          SHARED: ${{ steps.filter.outputs.shared }}
+          AUTH: ${{ steps.filter.outputs.auth }}
+          GATEWAY: ${{ steps.filter.outputs.gateway }}
+          TOOLS: ${{ steps.filter.outputs.tools }}
+        run: |
+          mods=()
+          if [ "$SHARED" = "true" ]; then mods+=(pkg gen/go); fi
+          if [ "$SHARED" = "true" ] || [ "$AUTH" = "true" ]; then mods+=(services/auth); fi
+          if [ "$SHARED" = "true" ] || [ "$GATEWAY" = "true" ]; then mods+=(services/gateway); fi
+          if [ "$SHARED" = "true" ] || [ "$TOOLS" = "true" ]; then mods+=(tools); fi
+          if [ ${#mods[@]} -eq 0 ]; then
+            json='[]'
+          else
+            json=$(printf '%s\n' "${mods[@]}" | jq -R . | jq -sc .)
+          fi
+          echo "modules=$json" >> "$GITHUB_OUTPUT"
+
+  module:
+    needs: changes
+    if: needs.changes.outputs.modules != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJSON(needs.changes.outputs.modules) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.15.0
+          working-directory: ${{ matrix.module }}
+      - name: Unit tests
+        working-directory: ${{ matrix.module }}
+        run: go test -race ./...
+      - name: Integration tests
+        if: startsWith(matrix.module, 'services/')
+        working-directory: ${{ matrix.module }}
+        run: go test -race -count=1 -tags integration ./...
+      - name: Coverage gate
+        if: matrix.module == 'services/auth'
+        run: make cover-auth
+
+  docker:
+    needs: changes
+    if: needs.changes.outputs.modules != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [auth, gateway]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/${{ matrix.service }}/Dockerfile
+          push: false
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}

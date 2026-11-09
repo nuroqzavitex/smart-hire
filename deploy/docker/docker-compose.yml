@@ -1,0 +1,78 @@
+# Application services. Image build context is the repository root.
+x-auth-env: &auth-env
+  AUTH_DB_DSN: postgres://auth_svc:${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}@postgres:5432/auth_db?sslmode=disable
+  AUTH_LOG_LEVEL: info
+
+services:
+  auth-migrate:
+    image: migrate/migrate:v4.18.3
+    command:
+      - -path=/migrations
+      - -database=postgres://auth_svc:${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}@postgres:5432/auth_db?sslmode=disable
+      - up
+    volumes:
+      - ../../services/auth/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  auth:
+    build:
+      context: ../..
+      dockerfile: services/auth/Dockerfile
+    image: smarthire/auth:dev
+    environment:
+      <<: *auth-env
+      AUTH_JWT_PRIVATE_KEY_PATH: /secrets/jwt.pem
+      AUTH_JWKS_URL: http://localhost:8001/.well-known/jwks.json
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    volumes:
+      - ./secrets/jwt.pem:/secrets/jwt.pem:ro
+    depends_on:
+      auth-migrate:
+        condition: service_completed_successfully
+    # Distroless image: no shell for a healthcheck. The gateway retries the
+    # JWKS fetch while auth starts.
+    restart: unless-stopped
+
+  # One-off job run by `make seed`. A separate service keeps the seed
+  # credentials out of the long-running auth container's environment.
+  auth-seed:
+    image: smarthire/auth:dev
+    entrypoint: ["/seed"]
+    environment:
+      <<: *auth-env
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?set SEED_ADMIN_EMAIL in .env}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?set SEED_ADMIN_PASSWORD in .env}
+    depends_on:
+      auth-migrate:
+        condition: service_completed_successfully
+    profiles: ["tools"]
+    restart: "no"
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: services/gateway/Dockerfile
+    image: smarthire/gateway:dev
+    environment:
+      GATEWAY_AUTH_GRPC_ADDR: auth:9001
+      GATEWAY_AUTH_JWKS_URL: http://auth:8001/.well-known/jwks.json
+      GATEWAY_REDIS_ADDR: redis:6379
+      GATEWAY_COOKIE_SECURE: "false"
+      GATEWAY_CORS_ORIGINS: http://localhost:3001
+      GATEWAY_LOG_LEVEL: info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      auth:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  default:
+    name: smarthire

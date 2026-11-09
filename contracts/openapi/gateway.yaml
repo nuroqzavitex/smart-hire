@@ -1,0 +1,234 @@
+consumes:
+- application/json
+definitions:
+  ErrorEnvelope:
+    properties:
+      error:
+        properties:
+          code:
+            description: gRPC code name, e.g. UNAUTHENTICATED.
+            type: string
+          details:
+            items:
+              type: object
+            type: array
+          message:
+            type: string
+          request_id:
+            type: string
+        required:
+        - code
+        - message
+        type: object
+    required:
+    - error
+    type: object
+  LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  TokenResponse:
+    properties:
+      access_token:
+        description: RS256 JWT access token.
+        type: string
+      expires_in:
+        description: Access token lifetime in seconds.
+        format: int64
+        type: integer
+    required:
+    - access_token
+    - expires_in
+    type: object
+  protobufAny:
+    additionalProperties: true
+    properties:
+      '@type':
+        type: string
+    type: object
+  rpcStatus:
+    properties:
+      code:
+        format: int32
+        type: integer
+      details:
+        items:
+          $ref: '#/definitions/protobufAny'
+          type: object
+        type: array
+      message:
+        type: string
+    type: object
+  v1RegisterRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      role:
+        $ref: '#/definitions/v1Role'
+    type: object
+  v1RegisterResponse:
+    properties:
+      userId:
+        type: string
+    type: object
+  v1Role:
+    default: ROLE_UNSPECIFIED
+    enum:
+    - ROLE_UNSPECIFIED
+    - ROLE_CANDIDATE
+    - ROLE_RECRUITER
+    - ROLE_ADMIN
+    type: string
+  v1User:
+    properties:
+      createdAt:
+        format: date-time
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      role:
+        $ref: '#/definitions/v1Role'
+    type: object
+info:
+  title: SmartHire Gateway API
+  version: version not set
+paths:
+  /v1/auth/login:
+    post:
+      description: Rate limited to 10 requests per minute per IP. Sets the HttpOnly
+        `sh_rt` refresh cookie (Path=/v1/auth) and the `sh_session=1` marker cookie.
+      operationId: Gateway_Login
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/LoginRequest'
+      responses:
+        "200":
+          description: Authenticated.
+          headers:
+            Set-Cookie:
+              description: Sets `sh_rt` (HttpOnly; SameSite=Strict; Path=/v1/auth;
+                Max-Age=604800) and `sh_session=1` (HttpOnly; SameSite=Strict; Path=/;
+                Max-Age=604800), both Secure per GATEWAY_COOKIE_SECURE (default true).
+                Sent as two Set-Cookie headers.
+              type: string
+          schema:
+            $ref: '#/definitions/TokenResponse'
+        "400":
+          description: Invalid request body.
+          schema:
+            $ref: '#/definitions/ErrorEnvelope'
+        "401":
+          description: Invalid credentials.
+          schema:
+            $ref: '#/definitions/ErrorEnvelope'
+        "429":
+          description: Too many login attempts.
+          schema:
+            $ref: '#/definitions/ErrorEnvelope'
+      summary: Exchange credentials for an access token and set the refresh cookie.
+      tags:
+      - Auth
+  /v1/auth/logout:
+    post:
+      description: The `Origin` header must be present and on the allow-list (browsers
+        set it automatically, scripts cannot). The `sh_rt` cookie is sent automatically
+        by browsers with credentials. Always clears the cookies.
+      operationId: Gateway_Logout
+      responses:
+        "204":
+          description: Logged out; cookies cleared.
+          headers:
+            Set-Cookie:
+              description: Expires `sh_rt` and `sh_session` (HttpOnly, SameSite=Strict,
+                and Secure per GATEWAY_COOKIE_SECURE, default true).
+              type: string
+        "403":
+          description: Origin missing or not allowed.
+          schema:
+            $ref: '#/definitions/ErrorEnvelope'
+      summary: Revoke the refresh token and clear both cookies.
+      tags:
+      - Auth
+  /v1/auth/refresh:
+    post:
+      description: The request must carry the cookie `sh_rt` (sent automatically by
+        browsers when requests are made with credentials). The `Origin` header must
+        be present and on the allow-list (CSRF defence); browsers set it automatically,
+        scripts cannot. The request has no body and no declared parameters, because
+        Swagger 2.0 cannot describe cookies.
+      operationId: Gateway_Refresh
+      responses:
+        "200":
+          description: Tokens rotated.
+          headers:
+            Set-Cookie:
+              description: Replaces `sh_rt` and `sh_session`; both are HttpOnly and
+                SameSite=Strict, and Secure per GATEWAY_COOKIE_SECURE (default true).
+              type: string
+          schema:
+            $ref: '#/definitions/TokenResponse'
+        "401":
+          description: The `sh_rt` cookie is missing (cookies are not cleared), or
+            the auth service rejected the token as invalid, expired or reused (both
+            cookies are then cleared).
+          schema:
+            $ref: '#/definitions/ErrorEnvelope'
+        "403":
+          description: Origin missing or not allowed.
+          schema:
+            $ref: '#/definitions/ErrorEnvelope'
+      summary: Rotate the refresh cookie and return a new access token.
+      tags:
+      - Auth
+  /v1/auth/register:
+    post:
+      operationId: AuthService_Register
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/v1RegisterRequest'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1RegisterResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - AuthService
+  /v1/me:
+    get:
+      operationId: AuthService_GetMe
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1User'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - AuthService
+produces:
+- application/json
+swagger: "2.0"
+tags:
+- name: AuthService

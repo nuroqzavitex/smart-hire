@@ -3,14 +3,14 @@
 FROM golang:1.27 AS build
 WORKDIR /src
 ENV CGO_ENABLED=0
+# Build in module mode: go.work lists modules that are not copied into this
+# image; the replace directives in go.mod resolve pkg/ and gen/go/.
+ENV GOWORK=off
 
-COPY go.work go.work.sum ./
 COPY pkg/ pkg/
 COPY gen/go/ gen/go/
 COPY services/gateway/ services/gateway/
 
-# go.work lists every service; drop the ones not copied into this image.
-RUN go work edit -dropuse ./services/auth
 WORKDIR /src/services/gateway
 RUN go build -trimpath -ldflags="-s -w" -o /out/gateway ./cmd/gateway
 

@@ -5,4 +5,5 @@ use (
 	./pkg
 	./services/auth
 	./services/gateway
+	./tools
 )

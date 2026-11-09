@@ -1,0 +1,142 @@
+swagger: "2.0"
+info:
+  title: SmartHire Gateway API (handwritten routes)
+  version: "1"
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /v1/auth/login:
+    post:
+      operationId: Gateway_Login
+      summary: Exchange credentials for an access token and set the refresh cookie.
+      description: >-
+        Rate limited to 10 requests per minute per IP. Sets the HttpOnly
+        `sh_rt` refresh cookie (Path=/v1/auth) and the `sh_session=1` marker cookie.
+      tags: [Auth]
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: "#/definitions/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated.
+          headers:
+            Set-Cookie:
+              type: string
+              description: >-
+                Sets `sh_rt` (HttpOnly; SameSite=Strict; Path=/v1/auth; Max-Age=604800)
+                and `sh_session=1` (HttpOnly; SameSite=Strict; Path=/; Max-Age=604800),
+                both Secure per GATEWAY_COOKIE_SECURE (default true).
+                Sent as two Set-Cookie headers.
+          schema:
+            $ref: "#/definitions/TokenResponse"
+        "400":
+          description: Invalid request body.
+          schema:
+            $ref: "#/definitions/ErrorEnvelope"
+        "401":
+          description: Invalid credentials.
+          schema:
+            $ref: "#/definitions/ErrorEnvelope"
+        "429":
+          description: Too many login attempts.
+          schema:
+            $ref: "#/definitions/ErrorEnvelope"
+  /v1/auth/refresh:
+    post:
+      operationId: Gateway_Refresh
+      summary: Rotate the refresh cookie and return a new access token.
+      description: >-
+        The request must carry the cookie `sh_rt` (sent automatically by
+        browsers when requests are made with credentials). The `Origin` header
+        must be present and on the allow-list (CSRF defence); browsers set it
+        automatically, scripts cannot. The request has no body and no declared
+        parameters, because Swagger 2.0 cannot describe cookies.
+      tags: [Auth]
+      responses:
+        "200":
+          description: Tokens rotated.
+          headers:
+            Set-Cookie:
+              type: string
+              description: >-
+                Replaces `sh_rt` and `sh_session`; both are HttpOnly and
+                SameSite=Strict, and Secure per GATEWAY_COOKIE_SECURE (default true).
+          schema:
+            $ref: "#/definitions/TokenResponse"
+        "401":
+          description: >-
+            The `sh_rt` cookie is missing (cookies are not cleared), or the auth
+            service rejected the token as invalid, expired or reused (both cookies
+            are then cleared).
+          schema:
+            $ref: "#/definitions/ErrorEnvelope"
+        "403":
+          description: Origin missing or not allowed.
+          schema:
+            $ref: "#/definitions/ErrorEnvelope"
+  /v1/auth/logout:
+    post:
+      operationId: Gateway_Logout
+      summary: Revoke the refresh token and clear both cookies.
+      description: >-
+        The `Origin` header must be present and on the allow-list (browsers set
+        it automatically, scripts cannot). The `sh_rt` cookie is sent
+        automatically by browsers with credentials. Always clears the cookies.
+      tags: [Auth]
+      responses:
+        "204":
+          description: Logged out; cookies cleared.
+          headers:
+            Set-Cookie:
+              type: string
+              description: >-
+                Expires `sh_rt` and `sh_session` (HttpOnly, SameSite=Strict, and
+                Secure per GATEWAY_COOKIE_SECURE, default true).
+        "403":
+          description: Origin missing or not allowed.
+          schema:
+            $ref: "#/definitions/ErrorEnvelope"
+definitions:
+  LoginRequest:
+    type: object
+    required: [email, password]
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+  TokenResponse:
+    type: object
+    required: [access_token, expires_in]
+    properties:
+      access_token:
+        type: string
+        description: RS256 JWT access token.
+      expires_in:
+        type: integer
+        format: int64
+        description: Access token lifetime in seconds.
+  ErrorEnvelope:
+    type: object
+    required: [error]
+    properties:
+      error:
+        type: object
+        required: [code, message]
+        properties:
+          code:
+            type: string
+            description: gRPC code name, e.g. UNAUTHENTICATED.
+          message:
+            type: string
+          details:
+            type: array
+            items:
+              type: object
+          request_id:
+            type: string

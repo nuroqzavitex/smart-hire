@@ -3,8 +3,10 @@
 FROM golang:1.27 AS build
 WORKDIR /src
 ENV CGO_ENABLED=0
+# Build in module mode: go.work lists modules that are not copied into this
+# image; the replace directives in go.mod resolve pkg/ and gen/go/.
+ENV GOWORK=off
 
-COPY go.work go.work.sum ./
 COPY pkg/ pkg/
 COPY gen/go/ gen/go/
 COPY services/auth/ services/auth/

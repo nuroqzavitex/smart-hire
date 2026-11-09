@@ -1,0 +1,71 @@
+name: ci-proto
+
+on:
+  pull_request:
+    paths:
+      - "contracts/proto/**"
+      - "contracts/openapi/**"
+      - "gen/**"
+      - "Makefile"
+      - ".github/workflows/ci-proto.yml"
+  push:
+    branches: [main]
+    paths:
+      - "contracts/proto/**"
+      - "contracts/openapi/**"
+      - "gen/**"
+      - "Makefile"
+      - ".github/workflows/ci-proto.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-proto-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  buf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Breaking-change detection needs a baseline: skip it until main has
+      # contracts/proto, and on pushes to main itself.
+      - name: Check whether main already has contracts/proto
+        id: base
+        run: |
+          if git cat-file -e origin/main:contracts/proto/buf.yaml 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: bufbuild/buf-action@v1
+        with:
+          version: 1.75.0
+          input: contracts/proto
+          lint: true
+          format: false
+          breaking: ${{ steps.base.outputs.exists == 'true' && github.event_name == 'pull_request' }}
+          breaking_against: ".git#branch=main,subdir=contracts/proto"
+          push: false
+          archive: false
+          comment: false
+
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache: false
+      - uses: bufbuild/buf-action@v1
+        with:
+          version: 1.75.0
+          setup_only: true
+      - name: Regenerate and fail on drift
+        run: |
+          make proto
+          git diff --exit-code gen contracts/openapi contracts/proto/buf.lock

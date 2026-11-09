@@ -1,0 +1,10 @@
+.git
+.claude
+.superpowers
+deploy/docker/secrets
+.env
+.env.*
+**/coverage.out
+*.exe
+**/*.exe
+**/node_modules
