@@ -13,6 +13,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
+	"github.com/nuroqzavitex/smarthire/pkg/event/eventschema"
 	"github.com/nuroqzavitex/smarthire/services/auth/internal/adapter/postgres"
 )
 
@@ -38,5 +39,13 @@ func TestRegister_OutboxHasHeaders(t *testing.T) {
 }
 
 func TestRegister_EventMatchesSchema(t *testing.T) {
-	t.Skip("eventschema arrives in Task 7; re-enable in Task 7 Step 6")
+	truncate(t)
+	svc := newService(t, postgres.NewOutboxWriter(pool))
+	_, err := svc.Register(context.Background(), "s@x.com", "password1", authz.RoleCandidate)
+	require.NoError(t, err)
+
+	var payload []byte
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`SELECT payload FROM outbox WHERE event_type='user.registered'`).Scan(&payload))
+	require.NoError(t, eventschema.Validate("user.registered", payload))
 }

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthire.local/events/job.updated.v1.json",
+  "title": "job.updated v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "event_type", "event_version", "source", "occurred_at", "trace_id", "correlation_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+    "event_type": { "const": "job.updated" },
+    "event_version": { "const": 1 },
+    "source": { "const": "job-service" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "trace_id": { "type": "string" },
+    "correlation_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job_id", "recruiter_id", "title", "description", "location", "required_skills", "nice_to_have_skills", "level", "salary_min", "salary_max", "status", "version"],
+      "properties": {
+        "job_id": { "type": "string", "format": "uuid" },
+        "recruiter_id": { "type": "string", "format": "uuid" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "location": { "type": "string" },
+        "required_skills": { "type": "array", "items": { "type": "string" } },
+        "nice_to_have_skills": { "type": "array", "items": { "type": "string" } },
+        "level": { "enum": ["intern", "junior", "middle", "senior", "lead"] },
+        "salary_min": { "type": ["integer", "null"], "minimum": 0 },
+        "salary_max": { "type": ["integer", "null"], "minimum": 0 },
+        "status": { "enum": ["draft", "open", "closed"] },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

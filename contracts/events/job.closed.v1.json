@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthire.local/events/job.closed.v1.json",
+  "title": "job.closed v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "event_type", "event_version", "source", "occurred_at", "trace_id", "correlation_id", "payload"],
+  "properties": {
+    "event_id": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+    "event_type": { "const": "job.closed" },
+    "event_version": { "const": 1 },
+    "source": { "const": "job-service" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "trace_id": { "type": "string" },
+    "correlation_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job_id", "version"],
+      "properties": {
+        "job_id": { "type": "string", "format": "uuid" },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

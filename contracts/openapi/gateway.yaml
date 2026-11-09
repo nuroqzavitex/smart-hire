@@ -23,6 +23,31 @@ definitions:
     required:
     - error
     type: object
+  JobServiceCloseJobBody:
+    type: object
+  JobServicePublishJobBody:
+    type: object
+  JobServiceUpdateJobBody:
+    properties:
+      description:
+        type: string
+      level:
+        $ref: '#/definitions/v1JobLevel'
+      location:
+        type: string
+      niceToHaveSkills:
+        $ref: '#/definitions/v1StringList'
+      requiredSkills:
+        $ref: '#/definitions/v1StringList'
+      salaryMax:
+        format: int32
+        type: integer
+      salaryMin:
+        format: int32
+        type: integer
+      title:
+        type: string
+    type: object
   LoginRequest:
     properties:
       email:
@@ -65,6 +90,102 @@ definitions:
       message:
         type: string
     type: object
+  v1CreateJobRequest:
+    properties:
+      description:
+        type: string
+      level:
+        $ref: '#/definitions/v1JobLevel'
+      location:
+        type: string
+      niceToHaveSkills:
+        items:
+          type: string
+        type: array
+      requiredSkills:
+        items:
+          type: string
+        type: array
+      salaryMax:
+        format: int32
+        type: integer
+      salaryMin:
+        format: int32
+        type: integer
+      title:
+        type: string
+    type: object
+  v1Job:
+    properties:
+      createdAt:
+        format: date-time
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      level:
+        $ref: '#/definitions/v1JobLevel'
+      location:
+        type: string
+      niceToHaveSkills:
+        items:
+          type: string
+        type: array
+      publishedAt:
+        format: date-time
+        type: string
+      recruiterId:
+        type: string
+      requiredSkills:
+        items:
+          type: string
+        type: array
+      salaryMax:
+        format: int32
+        type: integer
+      salaryMin:
+        format: int32
+        type: integer
+      status:
+        $ref: '#/definitions/v1JobStatus'
+      title:
+        type: string
+      updatedAt:
+        format: date-time
+        type: string
+      version:
+        format: int64
+        type: string
+    type: object
+  v1JobLevel:
+    default: JOB_LEVEL_UNSPECIFIED
+    enum:
+    - JOB_LEVEL_UNSPECIFIED
+    - JOB_LEVEL_INTERN
+    - JOB_LEVEL_JUNIOR
+    - JOB_LEVEL_MIDDLE
+    - JOB_LEVEL_SENIOR
+    - JOB_LEVEL_LEAD
+    type: string
+  v1JobStatus:
+    default: JOB_STATUS_UNSPECIFIED
+    enum:
+    - JOB_STATUS_UNSPECIFIED
+    - JOB_STATUS_DRAFT
+    - JOB_STATUS_OPEN
+    - JOB_STATUS_CLOSED
+    type: string
+  v1ListJobsResponse:
+    properties:
+      jobs:
+        items:
+          $ref: '#/definitions/v1Job'
+          type: object
+        type: array
+      nextPageToken:
+        type: string
+    type: object
   v1RegisterRequest:
     properties:
       email:
@@ -87,6 +208,13 @@ definitions:
     - ROLE_RECRUITER
     - ROLE_ADMIN
     type: string
+  v1StringList:
+    properties:
+      values:
+        items:
+          type: string
+        type: array
+    type: object
   v1User:
     properties:
       createdAt:
@@ -221,6 +349,192 @@ paths:
             $ref: '#/definitions/rpcStatus'
       tags:
       - AuthService
+  /v1/jobs:
+    get:
+      operationId: JobService_ListJobs
+      parameters:
+      - in: query
+        name: q
+        required: false
+        type: string
+      - collectionFormat: multi
+        in: query
+        items:
+          type: string
+        name: skills
+        required: false
+        type: array
+      - in: query
+        name: location
+        required: false
+        type: string
+      - default: JOB_LEVEL_UNSPECIFIED
+        description: 0 = no filter
+        enum:
+        - JOB_LEVEL_UNSPECIFIED
+        - JOB_LEVEL_INTERN
+        - JOB_LEVEL_JUNIOR
+        - JOB_LEVEL_MIDDLE
+        - JOB_LEVEL_SENIOR
+        - JOB_LEVEL_LEAD
+        in: query
+        name: level
+        required: false
+        type: string
+      - format: int32
+        in: query
+        name: salaryMin
+        required: false
+        type: integer
+      - description: 0 = default 20
+        format: int32
+        in: query
+        name: pageSize
+        required: false
+        type: integer
+      - in: query
+        name: pageToken
+        required: false
+        type: string
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1ListJobsResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - JobService
+    post:
+      operationId: JobService_CreateJob
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/v1CreateJobRequest'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1Job'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - JobService
+  /v1/jobs/{id}:
+    delete:
+      operationId: JobService_DeleteJob
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            properties: {}
+            type: object
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - JobService
+    get:
+      operationId: JobService_GetJob
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1Job'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - JobService
+    patch:
+      operationId: JobService_UpdateJob
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/JobServiceUpdateJobBody'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1Job'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - JobService
+  /v1/jobs/{id}:close:
+    post:
+      operationId: JobService_CloseJob
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/JobServiceCloseJobBody'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1Job'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - JobService
+  /v1/jobs/{id}:publish:
+    post:
+      operationId: JobService_PublishJob
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/JobServicePublishJobBody'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1Job'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - JobService
   /v1/me:
     get:
       operationId: AuthService_GetMe
@@ -235,8 +549,44 @@ paths:
             $ref: '#/definitions/rpcStatus'
       tags:
       - AuthService
+  /v1/me/jobs:
+    get:
+      operationId: JobService_ListMyJobs
+      parameters:
+      - default: JOB_STATUS_UNSPECIFIED
+        description: 0 = any status
+        enum:
+        - JOB_STATUS_UNSPECIFIED
+        - JOB_STATUS_DRAFT
+        - JOB_STATUS_OPEN
+        - JOB_STATUS_CLOSED
+        in: query
+        name: status
+        required: false
+        type: string
+      - format: int32
+        in: query
+        name: pageSize
+        required: false
+        type: integer
+      - in: query
+        name: pageToken
+        required: false
+        type: string
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1ListJobsResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - JobService
 produces:
 - application/json
 swagger: "2.0"
 tags:
 - name: AuthService
+- name: JobService

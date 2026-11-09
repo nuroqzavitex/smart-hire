@@ -1,0 +1,116 @@
+syntax = "proto3";
+package smarthire.job.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service JobService {
+  rpc CreateJob(CreateJobRequest) returns (Job) { option (google.api.http) = { post: "/v1/jobs" body: "*" }; }
+  rpc UpdateJob(UpdateJobRequest) returns (Job) { option (google.api.http) = { patch: "/v1/jobs/{id}" body: "*" }; }
+  rpc PublishJob(PublishJobRequest) returns (Job) { option (google.api.http) = { post: "/v1/jobs/{id}:publish" body: "*" }; }
+  rpc CloseJob(CloseJobRequest) returns (Job) { option (google.api.http) = { post: "/v1/jobs/{id}:close" body: "*" }; }
+  rpc DeleteJob(DeleteJobRequest) returns (google.protobuf.Empty) { option (google.api.http) = { delete: "/v1/jobs/{id}" }; }
+  rpc GetJob(GetJobRequest) returns (Job) { option (google.api.http) = { get: "/v1/jobs/{id}" }; }
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse) { option (google.api.http) = { get: "/v1/jobs" }; }
+  rpc ListMyJobs(ListMyJobsRequest) returns (ListJobsResponse) { option (google.api.http) = { get: "/v1/me/jobs" }; }
+}
+
+enum JobLevel {
+  JOB_LEVEL_UNSPECIFIED = 0;
+  JOB_LEVEL_INTERN = 1;
+  JOB_LEVEL_JUNIOR = 2;
+  JOB_LEVEL_MIDDLE = 3;
+  JOB_LEVEL_SENIOR = 4;
+  JOB_LEVEL_LEAD = 5;
+}
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_DRAFT = 1;
+  JOB_STATUS_OPEN = 2;
+  JOB_STATUS_CLOSED = 3;
+}
+
+message StringList {
+  repeated string values = 1 [(buf.validate.field).repeated = {max_items: 30, items: {string: {max_len: 50}}}];
+}
+
+message Job {
+  string id = 1;
+  string recruiter_id = 2;
+  string title = 3;
+  string description = 4;
+  repeated string required_skills = 5;
+  repeated string nice_to_have_skills = 6;
+  JobLevel level = 7;
+  string location = 8;
+  optional int32 salary_min = 9;
+  optional int32 salary_max = 10;
+  JobStatus status = 11;
+  int64 version = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+  google.protobuf.Timestamp published_at = 15;
+}
+
+message CreateJobRequest {
+  string title = 1 [(buf.validate.field).string = {min_len: 5, max_len: 200}];
+  string description = 2 [(buf.validate.field).string = {min_len: 20, max_len: 20000}];
+  repeated string required_skills = 3 [(buf.validate.field).repeated = {max_items: 30, items: {string: {max_len: 50}}}];
+  repeated string nice_to_have_skills = 4 [(buf.validate.field).repeated = {max_items: 30, items: {string: {max_len: 50}}}];
+  JobLevel level = 5 [(buf.validate.field).enum = {defined_only: true, not_in: [0]}];
+  string location = 6 [(buf.validate.field).string = {min_len: 1, max_len: 100}];
+  optional int32 salary_min = 7 [(buf.validate.field).int32.gte = 0];
+  optional int32 salary_max = 8 [(buf.validate.field).int32.gte = 0];
+}
+
+message UpdateJobRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  optional string title = 2 [(buf.validate.field).string = {min_len: 5, max_len: 200}];
+  optional string description = 3 [(buf.validate.field).string = {min_len: 20, max_len: 20000}];
+  StringList required_skills = 4;
+  StringList nice_to_have_skills = 5;
+  optional JobLevel level = 6 [(buf.validate.field).enum = {defined_only: true, not_in: [0]}];
+  optional string location = 7 [(buf.validate.field).string = {min_len: 1, max_len: 100}];
+  optional int32 salary_min = 8 [(buf.validate.field).int32.gte = 0];
+  optional int32 salary_max = 9 [(buf.validate.field).int32.gte = 0];
+}
+
+message PublishJobRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message CloseJobRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message DeleteJobRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetJobRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message ListJobsRequest {
+  string q = 1 [(buf.validate.field).string.max_len = 200];
+  repeated string skills = 2 [(buf.validate.field).repeated = {max_items: 30, items: {string: {max_len: 50}}}];
+  string location = 3 [(buf.validate.field).string.max_len = 100];
+  JobLevel level = 4 [(buf.validate.field).enum.defined_only = true]; // 0 = no filter
+  optional int32 salary_min = 5 [(buf.validate.field).int32.gte = 0];
+  int32 page_size = 6 [(buf.validate.field).int32 = {gte: 0, lte: 100}]; // 0 = default 20
+  string page_token = 7 [(buf.validate.field).string.max_len = 512];
+}
+
+message ListMyJobsRequest {
+  JobStatus status = 1 [(buf.validate.field).enum.defined_only = true]; // 0 = any status
+  int32 page_size = 2 [(buf.validate.field).int32 = {gte: 0, lte: 100}];
+  string page_token = 3 [(buf.validate.field).string.max_len = 512];
+}
+
+message ListJobsResponse {
+  repeated Job jobs = 1;
+  string next_page_token = 2;
+}
