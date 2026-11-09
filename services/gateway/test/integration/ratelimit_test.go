@@ -90,5 +90,5 @@ func TestLimiter_HangingRedisFailsFast(t *testing.T) {
 	start := time.Now()
 	_, err = ratelimit.New(rdb).Allow(t.Context(), "k", 10, time.Minute)
 	require.Error(t, err)
-	assert.Less(t, time.Since(start), 300*time.Millisecond)
+	assert.Less(t, time.Since(start), 150*time.Millisecond)
 }

@@ -91,9 +91,19 @@ func truncate(t *testing.T) {
 
 func newService(t *testing.T, outbox app.OutboxWriter) *app.Service {
 	t.Helper()
+	return newServiceWith(t, postgres.NewRefreshTokenRepo(pool), outbox)
+}
+
+func newServiceWithTokens(t *testing.T, tokens app.RefreshTokenRepo) *app.Service {
+	t.Helper()
+	return newServiceWith(t, tokens, postgres.NewOutboxWriter(pool))
+}
+
+func newServiceWith(t *testing.T, tokens app.RefreshTokenRepo, outbox app.OutboxWriter) *app.Service {
+	t.Helper()
 	svc, err := app.NewService(app.Deps{
 		Users:      postgres.NewUserRepo(pool),
-		Tokens:     postgres.NewRefreshTokenRepo(pool),
+		Tokens:     tokens,
 		Outbox:     outbox,
 		Tx:         postgres.NewTxManager(pool),
 		Hasher:     fastHasher{},

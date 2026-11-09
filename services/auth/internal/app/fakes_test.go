@@ -26,6 +26,10 @@ func (f fakeTx) WithTx(ctx context.Context, fn func(ctx context.Context) error) 
 		return err
 	}
 	err := fn(ctx)
+	if err == nil {
+		// A real Commit fails on a cancelled ctx.
+		err = ctx.Err()
+	}
 	if f.lastCommitted != nil {
 		*f.lastCommitted = err == nil
 	}
@@ -81,6 +85,13 @@ func (f *fakeUsers) setStatus(email string, s domain.UserStatus) {
 type fakeTokens struct {
 	mu   sync.Mutex
 	list []domain.RefreshToken
+
+	afterGet        func()          // called after GetByHashForUpdate when non-nil
+	revokeFamilyCtx context.Context // ctx of the latest RevokeFamily call
+	// ctx.Err() observed inside the latest RevokeFamily call (the ctx itself is
+	// cancelled by the caller's deferred cancel once Refresh returns).
+	revokeFamilyErr  error
+	revokeFamilyFail error // returned by RevokeFamily when set
 }
 
 func (f *fakeTokens) Create(_ context.Context, t domain.RefreshToken) error {
@@ -91,6 +102,14 @@ func (f *fakeTokens) Create(_ context.Context, t domain.RefreshToken) error {
 }
 
 func (f *fakeTokens) GetByHashForUpdate(_ context.Context, hash []byte) (domain.RefreshToken, error) {
+	t, err := f.lookup(hash)
+	if f.afterGet != nil {
+		f.afterGet()
+	}
+	return t, err
+}
+
+func (f *fakeTokens) lookup(hash []byte) (domain.RefreshToken, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, t := range f.list {
@@ -113,9 +132,14 @@ func (f *fakeTokens) Revoke(_ context.Context, id uuid.UUID, at time.Time, repla
 	return nil
 }
 
-func (f *fakeTokens) RevokeFamily(_ context.Context, familyID uuid.UUID, at time.Time) error {
+func (f *fakeTokens) RevokeFamily(ctx context.Context, familyID uuid.UUID, at time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.revokeFamilyCtx = ctx
+	f.revokeFamilyErr = ctx.Err()
+	if f.revokeFamilyFail != nil {
+		return f.revokeFamilyFail
+	}
 	for i := range f.list {
 		if f.list[i].FamilyID == familyID && f.list[i].RevokedAt == nil {
 			f.list[i].RevokedAt = &at

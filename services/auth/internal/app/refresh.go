@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -10,16 +12,22 @@ import (
 	"github.com/nuroqzavitex/smarthire/services/auth/internal/domain"
 )
 
-// Refresh rotates a refresh token within its family. Presenting an already
-// revoked token is treated as theft: the whole family is revoked and that
-// revocation is committed (the closure returns nil) even though the call then
-// fails with ErrInvalidRefreshToken. The transaction runs detached from ctx
-// cancellation so a client disconnect cannot skip the family revocation.
+// reuseRevokeTimeout bounds the detached family revocation after reuse.
+const reuseRevokeTimeout = 5 * time.Second
+
+var errReuseDetected = errors.New("refresh token reuse")
+
+// Refresh rotates a refresh token within its family. Rotation runs on the
+// request ctx, so a cancelled client rolls it back and the old token stays
+// valid. Presenting an already revoked token is treated as theft: the
+// rotation transaction rolls back and the whole family is then revoked in a
+// separate transaction on a detached ctx bounded by reuseRevokeTimeout, so a
+// client disconnect cannot skip the revocation. The call still fails with
+// ErrInvalidRefreshToken.
 func (s *Service) Refresh(ctx context.Context, raw string) (TokenPair, error) {
 	var pair TokenPair
-	var reuse bool
 	var famID, userID uuid.UUID
-	err := s.Tx.WithTx(context.WithoutCancel(ctx), func(ctx context.Context) error {
+	err := s.Tx.WithTx(ctx, func(ctx context.Context) error {
 		t, err := s.Tokens.GetByHashForUpdate(ctx, hashRefresh(raw))
 		if errors.Is(err, apperr.ErrNotFound) {
 			return domain.ErrInvalidRefreshToken
@@ -29,8 +37,8 @@ func (s *Service) Refresh(ctx context.Context, raw string) (TokenPair, error) {
 		}
 		now := s.Now()
 		if t.RevokedAt != nil {
-			reuse, famID, userID = true, t.FamilyID, t.UserID
-			return s.Tokens.RevokeFamily(ctx, t.FamilyID, now) // nil -> COMMIT
+			famID, userID = t.FamilyID, t.UserID
+			return errReuseDetected // rollback, nothing written yet
 		}
 		if !now.Before(t.ExpiresAt) {
 			return domain.ErrInvalidRefreshToken
@@ -49,13 +57,22 @@ func (s *Service) Refresh(ctx context.Context, raw string) (TokenPair, error) {
 		}
 		return s.Tokens.Revoke(ctx, t.ID, now, &newID)
 	})
-	if err != nil {
-		return TokenPair{}, err
-	}
-	if reuse {
+	if errors.Is(err, errReuseDetected) {
 		s.Logger.WarnContext(ctx, "refresh token reuse detected", "event", "refresh_token_reuse",
 			"user_id", userID, "family_id", famID)
+		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reuseRevokeTimeout)
+		defer cancel()
+		if err := s.Tx.WithTx(rctx, func(ctx context.Context) error {
+			return s.Tokens.RevokeFamily(ctx, famID, s.Now())
+		}); err != nil {
+			s.Logger.ErrorContext(ctx, "refresh family revocation failed", "event", "refresh_token_reuse_revoke_failed",
+				"user_id", userID, "family_id", famID, "err", err)
+			return TokenPair{}, fmt.Errorf("revoke family: %w", err)
+		}
 		return TokenPair{}, domain.ErrInvalidRefreshToken
+	}
+	if err != nil {
+		return TokenPair{}, err
 	}
 	return pair, nil
 }

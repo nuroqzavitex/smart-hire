@@ -1,9 +1,11 @@
 package app_test
 
 import (
+	"bytes"
 	"context"
-	"io"
+	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,23 +24,25 @@ type refreshEnv struct {
 	env
 	clock     *time.Time
 	committed *bool
+	logs      *bytes.Buffer
 }
 
 func newRefreshEnv(t *testing.T) refreshEnv {
 	t.Helper()
 	clock := now
 	committed := new(bool)
+	logs := new(bytes.Buffer)
 	e := env{users: newFakeUsers(), tokens: &fakeTokens{}, outbox: &fakeOutbox{}, hasher: &fakeHasher{}}
 	svc, err := app.NewService(app.Deps{
 		Users: e.users, Tokens: e.tokens, Outbox: e.outbox, Tx: fakeTx{lastCommitted: committed},
 		Hasher: e.hasher, Issuer: fakeIssuer{},
 		Now:        func() time.Time { return clock },
 		RefreshTTL: 7 * 24 * time.Hour,
-		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger:     slog.New(slog.NewTextHandler(logs, nil)),
 	})
 	require.NoError(t, err)
 	e.svc = svc
-	r := refreshEnv{env: e, clock: &clock, committed: committed}
+	r := refreshEnv{env: e, clock: &clock, committed: committed, logs: logs}
 	_, err = svc.Register(context.Background(), "a@x.com", "password1", authz.RoleCandidate)
 	require.NoError(t, err)
 	return r
@@ -86,19 +90,72 @@ func TestRefresh_ReuseRevokesFamily(t *testing.T) {
 	assert.ErrorIs(t, err, apperr.ErrUnauthenticated)
 }
 
-func TestRefresh_ReuseRevokesFamilyWithCancelledContext(t *testing.T) {
+// reuseCancelledMidway sets up a reuse scenario where the client goes away
+// right after the token lookup, and returns the env plus the live token p2.
+func reuseCancelledMidway(t *testing.T) (refreshEnv, app.TokenPair, error) {
+	t.Helper()
 	r := newRefreshEnv(t)
 	p1 := r.login(t)
 	p2, err := r.svc.Refresh(context.Background(), p1.RefreshToken)
 	require.NoError(t, err)
-
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // client went away
+	r.tokens.afterGet = cancel // client goes away right after lookup
 	_, err = r.svc.Refresh(ctx, p1.RefreshToken)
+	return r, p2, err
+}
+
+func TestRefresh_ReuseRevokesFamilyWhenCancelledMidway(t *testing.T) {
+	r, p2, err := reuseCancelledMidway(t)
 	assert.ErrorIs(t, err, apperr.ErrUnauthenticated)
-	assert.True(t, *r.committed, "family revocation must commit despite a cancelled ctx")
+	assert.True(t, *r.committed, "family revocation must commit on a detached ctx")
 	nw, _ := r.tokens.byHash(p2.RefreshToken)
 	assert.NotNil(t, nw.RevokedAt)
+}
+
+func TestRefresh_ReuseRevocationHasBoundedDetachedCtx(t *testing.T) {
+	r, _, _ := reuseCancelledMidway(t)
+	rc := r.tokens.revokeFamilyCtx
+	require.NotNil(t, rc)
+	assert.NoError(t, r.tokens.revokeFamilyErr, "revocation ctx must be live (detached) when used")
+	dl, ok := rc.Deadline()
+	require.True(t, ok)
+	assert.LessOrEqual(t, time.Until(dl), 5*time.Second)
+	assert.Greater(t, time.Until(dl), 4*time.Second)
+}
+
+func TestRefresh_ReuseLoggedBeforeRevocationAndFailureLogged(t *testing.T) {
+	r := newRefreshEnv(t)
+	p1 := r.login(t)
+	_, err := r.svc.Refresh(context.Background(), p1.RefreshToken)
+	require.NoError(t, err)
+	r.tokens.revokeFamilyFail = errors.New("db down")
+	r.logs.Reset()
+	_, err = r.svc.Refresh(context.Background(), p1.RefreshToken)
+	require.Error(t, err)
+	out := r.logs.String()
+	assert.Contains(t, out, "refresh_token_reuse ")
+	assert.Contains(t, out, "event=refresh_token_reuse_revoke_failed")
+	assert.Contains(t, out, "msg=\"refresh family revocation failed\"")
+	assert.Contains(t, out, "level=ERROR")
+	var errLine string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "refresh_token_reuse_revoke_failed") {
+			errLine = l
+		}
+	}
+	assert.Contains(t, errLine, "user_id=")
+	assert.Contains(t, errLine, "family_id=")
+	assert.Contains(t, errLine, "db down")
+}
+
+func TestRefresh_CancelledRotationRollsBack(t *testing.T) {
+	r := newRefreshEnv(t)
+	p1 := r.login(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	r.tokens.afterGet = cancel
+	_, err := r.svc.Refresh(ctx, p1.RefreshToken)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.False(t, *r.committed)
 }
 
 func TestRefresh_Expired(t *testing.T) {

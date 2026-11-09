@@ -44,6 +44,37 @@ func (f failingOutbox) Write(ctx context.Context, e event.Envelope, id string) e
 	return errors.New("outbox boom")
 }
 
+type cancelMarker struct{}
+
+// cancelAfterCreate cancels after a successful Create, but only for calls
+// whose ctx carries cancelMarker.
+type cancelAfterCreate struct {
+	inner  app.RefreshTokenRepo
+	cancel func()
+}
+
+func (c cancelAfterCreate) Create(ctx context.Context, t domain.RefreshToken) error {
+	if err := c.inner.Create(ctx, t); err != nil {
+		return err
+	}
+	if ctx.Value(cancelMarker{}) != nil {
+		c.cancel()
+	}
+	return nil
+}
+
+func (c cancelAfterCreate) GetByHashForUpdate(ctx context.Context, h []byte) (domain.RefreshToken, error) {
+	return c.inner.GetByHashForUpdate(ctx, h)
+}
+
+func (c cancelAfterCreate) Revoke(ctx context.Context, id uuid.UUID, at time.Time, by *uuid.UUID) error {
+	return c.inner.Revoke(ctx, id, at, by)
+}
+
+func (c cancelAfterCreate) RevokeFamily(ctx context.Context, fam uuid.UUID, at time.Time) error {
+	return c.inner.RevokeFamily(ctx, fam, at)
+}
+
 func user(email string) domain.User {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	return domain.User{
@@ -124,6 +155,21 @@ func TestRefresh_ReuseRevokesFamilyPersisted(t *testing.T) {
 	_, err = svc.Refresh(context.Background(), p1.RefreshToken)
 	require.ErrorIs(t, err, apperr.ErrUnauthenticated)
 	assert.Equal(t, 0, count(t, `SELECT count(*) FROM refresh_tokens WHERE revoked_at IS NULL`))
+}
+
+func TestRefresh_CancelledMidRotationKeepsOldToken(t *testing.T) {
+	truncate(t)
+	cctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx := context.WithValue(cctx, cancelMarker{}, true)
+	svc := newServiceWithTokens(t, cancelAfterCreate{inner: postgres.NewRefreshTokenRepo(pool), cancel: cancel})
+	p1 := login(t, svc) // background ctx has no marker, so no cancel
+	_, err := svc.Refresh(ctx, p1.RefreshToken)
+	require.Error(t, err)
+	assert.Equal(t, 1, count(t, `SELECT count(*) FROM refresh_tokens`)) // new RT rolled back
+	assert.Equal(t, 1, count(t, `SELECT count(*) FROM refresh_tokens WHERE revoked_at IS NULL`))
+	_, err = newService(t, postgres.NewOutboxWriter(pool)).Refresh(context.Background(), p1.RefreshToken)
+	assert.NoError(t, err) // old RT still valid
 }
 
 func TestRefresh_ConcurrentSameToken(t *testing.T) {
