@@ -1,4 +1,4 @@
-# Infrastructure: Postgres and Redis.
+# Infrastructure: Postgres, Redis and Redpanda.
 services:
   postgres:
     image: postgres:16-alpine
@@ -6,6 +6,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       # Read by init/postgres/01-create-dbs.sql to create the auth_svc role.
       AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD in .env}
+      # Read by init/postgres/02-create-job-db.sql to create the job_svc role.
+      JOB_DB_PASSWORD: ${JOB_DB_PASSWORD:?set JOB_DB_PASSWORD in .env}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init/postgres:/docker-entrypoint-initdb.d:ro
@@ -27,8 +29,43 @@ services:
       retries: 30
     restart: unless-stopped
 
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=1G
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "127.0.0.1:19092:19092"   # D9: dev/smoke only
+    volumes: [redpanda-data:/var/lib/redpanda/data]
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true'"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  topics-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    entrypoint: ["/bin/bash", "/init/create-topics.sh"]
+    volumes: [./init/redpanda:/init:ro]
+    depends_on: { redpanda: { condition: service_healthy } }
+    restart: "no"
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v2.8.0
+    environment: { KAFKA_BROKERS: "redpanda:9092" }
+    ports: ["127.0.0.1:8081:8080"]
+    depends_on: { redpanda: { condition: service_healthy } }
+    restart: unless-stopped
+
 volumes:
   postgres-data:
+  redpanda-data:
 
 networks:
   default:

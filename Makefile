@@ -55,7 +55,8 @@ cover-auth:
 		go tool cover -func=coverage.out | awk '/^total:/ { sub("%","",$$3); printf "total coverage: %s%%\n", $$3; if ($$3+0 < 70) { print "coverage below 70%"; exit 1 } }'
 
 infra-up:
-	$(COMPOSE) up -d --wait postgres redis
+	$(COMPOSE) up -d --wait postgres redis redpanda redpanda-console
+	$(COMPOSE) run --rm topics-init
 
 obs-up:
 	$(COMPOSE) up -d otel-collector tempo grafana
