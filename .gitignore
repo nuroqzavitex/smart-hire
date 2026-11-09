@@ -5,3 +5,9 @@ deploy/docker/secrets/
 coverage.out
 .claude/worktrees/
 .superpowers/
+
+# built binaries
+*.exe
+services/*/gateway
+services/*/server
+services/*/seed
