@@ -33,6 +33,8 @@ type Config struct {
 	JWTAudience            string        `env:"JWT_AUDIENCE" envDefault:"smarthire-api"`
 	AccessTTL              time.Duration `env:"ACCESS_TTL" envDefault:"15m"`
 	RefreshTTL             time.Duration `env:"REFRESH_TTL" envDefault:"168h"`
+	KafkaBrokers           []string      `env:"KAFKA_BROKERS" envDefault:"redpanda:9092" envSeparator:","`
+	OutboxInterval         time.Duration `env:"OUTBOX_INTERVAL" envDefault:"500ms"`
 	JWKSURL                string        `env:"JWKS_URL" envDefault:"http://localhost:8001/.well-known/jwks.json"`
 }
 

@@ -28,6 +28,20 @@ func TestLoad_DefaultsAndRequired(t *testing.T) {
 	assert.Equal(t, uint32(19456), c.Argon2Params().Memory)
 }
 
+func TestLoad_KafkaDefaults(t *testing.T) {
+	t.Setenv("AUTH_DB_DSN", "postgres://x")
+	t.Setenv("AUTH_JWT_PRIVATE_KEY_PATH", "/k.pem")
+	c, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"redpanda:9092"}, c.KafkaBrokers)
+	assert.Equal(t, 500*time.Millisecond, c.OutboxInterval)
+
+	t.Setenv("AUTH_KAFKA_BROKERS", "a:1,b:2")
+	c, err = config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a:1", "b:2"}, c.KafkaBrokers)
+}
+
 func TestLoadSeed_Required(t *testing.T) {
 	_, err := config.LoadSeed()
 	require.Error(t, err)

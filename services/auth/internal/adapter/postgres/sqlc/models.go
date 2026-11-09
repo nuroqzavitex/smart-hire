@@ -17,6 +17,7 @@ type Outbox struct {
 	Payload     []byte
 	CreatedAt   time.Time
 	PublishedAt *time.Time
+	Headers     []byte
 }
 
 type RefreshToken struct {

@@ -18,8 +18,10 @@ import (
 	authv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/auth/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
+	"github.com/nuroqzavitex/smarthire/pkg/kafka"
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
 	"github.com/nuroqzavitex/smarthire/pkg/otel"
+	"github.com/nuroqzavitex/smarthire/pkg/outbox"
 	"github.com/nuroqzavitex/smarthire/services/auth/internal/adapter/crypto"
 	authgrpc "github.com/nuroqzavitex/smarthire/services/auth/internal/adapter/grpc"
 	"github.com/nuroqzavitex/smarthire/services/auth/internal/adapter/httpx"
@@ -85,6 +87,12 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 	defer pool.Close()
 
+	producer, err := kafka.NewProducer(cfg.KafkaBrokers)
+	if err != nil {
+		return fmt.Errorf("kafka producer: %w", err)
+	}
+	defer producer.Close() // runs before pool.Close; the relay is awaited earlier
+
 	keys, err := crypto.LoadKeys(cfg.JWTPrivateKeyPath, cfg.JWTExtraPublicKeyPaths...)
 	if err != nil {
 		return err
@@ -137,6 +145,10 @@ func Run(ctx context.Context, cfg config.Config) error {
 	grpcErr := make(chan error, 1)
 	go func() { grpcErr <- grpcx.Serve(runCtx, grpcSrv, grpcLis) }()
 
+	relay := outbox.NewRelay(pool, producer, outbox.RelayOptions{Interval: cfg.OutboxInterval, Logger: log})
+	relayDone := make(chan error, 1)
+	go func() { relayDone <- relay.Run(runCtx) }()
+
 	var runErr error
 	select {
 	case <-ctx.Done():
@@ -150,6 +162,10 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 	hs.Shutdown() // report NOT_SERVING while draining
 	cancel()
+	// Wait for the relay before the deferred producer and pool close.
+	if err := <-relayDone; err != nil && runErr == nil {
+		runErr = fmt.Errorf("outbox relay: %w", err)
+	}
 	if grpcErr != nil {
 		if err := <-grpcErr; err != nil && runErr == nil {
 			runErr = fmt.Errorf("grpc server: %w", err)

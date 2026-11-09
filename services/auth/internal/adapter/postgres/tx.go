@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/nuroqzavitex/smarthire/pkg/apperr"
+	"github.com/nuroqzavitex/smarthire/pkg/outbox"
 	"github.com/nuroqzavitex/smarthire/services/auth/internal/adapter/postgres/sqlc"
 )
 
@@ -80,6 +81,14 @@ func queries(ctx context.Context, pool *pgxpool.Pool) *sqlc.Queries {
 		return sqlc.New(tx)
 	}
 	return sqlc.New(pool)
+}
+
+// dbtx returns the tx in ctx, or the pool, as an outbox.Querier.
+func dbtx(ctx context.Context, pool *pgxpool.Pool) outbox.Querier {
+	if tx, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
+		return tx
+	}
+	return pool
 }
 
 func isUniqueViolation(err error) bool {
