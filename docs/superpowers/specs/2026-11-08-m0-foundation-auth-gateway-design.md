@@ -56,7 +56,7 @@
 | Release/push image, Helm | M6 | |
 
 ### 2.3 Công cụ
-Go bản stable mới nhất (workspace `go.work`), `pgx/v5` + `sqlc`, `golang-migrate`, `kelseyhightower/envconfig` (tag `default`/`required` có sẵn), `log/slog`, `buf`, `grpc-gateway` v2, `chi` v5, `golang-jwt/jwt/v5`, `alexedwards/argon2id`, `redis/go-redis/v9`, OTel Go SDK (`otelgrpc`, `otelhttp`), `testify`, `testcontainers-go`, `golangci-lint`.
+Go bản stable mới nhất (workspace `go.work`), `pgx/v5` + `sqlc`, `golang-migrate`, `caarlos0/env/v11` (tag `envDefault`/`required` có sẵn), `log/slog`, `buf`, `grpc-gateway` v2, `chi` v5, `golang-jwt/jwt/v5`, `alexedwards/argon2id`, `redis/go-redis/v9`, OTel Go SDK (`otelgrpc`, `otelhttp`), `testify`, `testcontainers-go`, `golangci-lint`.
 
 ---
 
@@ -144,8 +144,9 @@ JWT RS256, TTL 15 phút. Claims: `sub`, `role`, `iss`, `aud`, `exp`, `iat`, `jti
 ## 5. Gateway
 
 ### 5.1 Middleware (chi)
-`recovery → requestid → otelhttp → logging → CORS → clientip → auth (tuỳ chọn) → ratelimit`
-- `auth` tuỳ chọn đặt **trước** `ratelimit` để khoá rate limit theo `sub` đã verify (khoá theo `sub` chưa verify thì kẻ tấn công đổi `sub` để lách).
+`Recovery → RequestID → otelhttp → Logging → CORS → ClientIP → OptionalAuth → ratelimit → RejectInvalidAuth → routes`
+- `OptionalAuth` đặt **trước** `ratelimit` để khoá rate limit theo `sub` đã verify (khoá theo `sub` chưa verify thì kẻ tấn công đổi `sub` để lách).
+- Bearer không hợp lệ không bị từ chối ngay: `OptionalAuth` chỉ đánh dấu, request vẫn bị rate limit theo IP, rồi `RejectInvalidAuth` trả 401. Ba route cookie `/v1/auth/login|refresh|logout` được miễn `RejectInvalidAuth` (SPA gửi access token hết hạn kèm lời gọi refresh vẫn phục hồi được phiên).
 - `auth` tuỳ chọn theo route: gắn claims nếu có Bearer hợp lệ; route bắt buộc dùng `RequireAuth` / `RequireRole`.
 - CORS: chỉ origin Web App từ config (`GATEWAY_CORS_ORIGINS`), `credentials: true`.
 
@@ -200,10 +201,11 @@ Custom error handler của grpc-gateway, dùng chung cho route viết tay. Map g
 ### 6.2 Makefile
 | Lệnh | Việc làm |
 |---|---|
-| `bootstrap` | cài buf, sqlc, golangci-lint, migrate; sinh khoá JWT dev |
-| `proto` | `buf generate` → `gen/go` + OpenAPI; gọi `openapi` |
+| `bootstrap` | cài buf, golangci-lint, migrate (pin phiên bản); sinh khoá JWT dev; tạo `.env` từ `.env.example` |
+| `proto-deps` | `buf dep update` (chủ động nâng deps, ghi lại `buf.lock`) |
+| `proto` | buf generate (lock đã commit) → `gen/go` + OpenAPI; gọi `openapi` |
 | `openapi` | gộp OpenAPI sinh + viết tay |
-| `sqlc` | sinh code sqlc |
+| `sqlc` | sinh code sqlc (chạy sqlc qua Docker, không cài bởi `bootstrap`) |
 | `infra-up` / `obs-up` / `up` / `down` | bật/tắt nhóm container |
 | `migrate` | chạy migration |
 | `seed` | tạo admin + user mẫu |

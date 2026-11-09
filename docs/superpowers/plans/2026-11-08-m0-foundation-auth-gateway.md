@@ -6,7 +6,7 @@
 
 **Architecture:** Go workspace gồm 5 module (`pkg`, `gen/go`, `services/auth`, `services/gateway`, `tools`). Proto trong `contracts/proto` là nguồn sự thật; `buf generate` sinh Go + grpc-gateway + OpenAPI vào `gen/` (commit). Auth theo hexagonal (`domain → app → adapter → bootstrap`); Gateway là router chi, route cookie viết tay, còn lại fallback sang grpc-gateway mux.
 
-**Tech Stack:** Go (workspace), gRPC, grpc-gateway v2, buf, protovalidate, chi v5, pgx/v5 + sqlc, golang-migrate, envconfig, slog, OpenTelemetry, golang-jwt/v5 + keyfunc/v3, alexedwards/argon2id, go-redis/v9, testify, testcontainers-go, Docker Compose, GitHub Actions.
+**Tech Stack:** Go (workspace), gRPC, grpc-gateway v2, buf, protovalidate, chi v5, pgx/v5 + sqlc, golang-migrate, caarlos0/env/v11, slog, OpenTelemetry, golang-jwt/v5 + keyfunc/v3, alexedwards/argon2id, go-redis/v9, testify, testcontainers-go, Docker Compose, GitHub Actions.
 
 **Spec:** `docs/superpowers/specs/2026-11-08-m0-foundation-auth-gateway-design.md` (và `spec.md` gốc cho envelope event, error format).
 
@@ -16,7 +16,7 @@
 - Go ≥ 1.25; directive `go` trong mọi `go.mod` = phiên bản cài ở Task 0.
 - Không import chéo `internal/` giữa các service; chỉ chia sẻ qua `pkg/`, `gen/go/`.
 - `gen/` được commit; không sửa tay.
-- Config chỉ qua env, prefix theo service (`AUTH_`, `GATEWAY_`). Thư viện: `kelseyhightower/envconfig` (spec.md §9.1 cho phép; thay cho koanf vì có sẵn tag `default`/`required`).
+- Config chỉ qua env, prefix theo service (`AUTH_`, `GATEWAY_`). Thư viện: `github.com/caarlos0/env/v11` (spec.md §9.1 cho phép; thay cho koanf vì có sẵn tag `envDefault`/`required`; `pkg/config.Load` dùng `env.ParseWithOptions` với `Prefix`, biến không prefix không bao giờ thoả config).
 - Package lỗi dùng chung đặt ở `pkg/apperr` (không đặt tên `errors` để tránh trùng stdlib).
 - Ports: Auth gRPC `9001`, Auth HTTP nội bộ `8001`, Gateway HTTP `8080`, Grafana `3000`, OTel Collector `4317`.
 - Access token: RS256, TTL 15 phút, `iss=smarthire-auth`, `aud=smarthire-api`. Refresh token: 32 byte ngẫu nhiên base64url (RawURLEncoding), DB lưu `sha256`, TTL 7 ngày.
@@ -58,7 +58,7 @@ contracts/openapi/gateway.yaml                    # gộp
 gen/go/go.mod, gen/go/smarthire/auth/v1/*.go      # sinh
 pkg/go.mod
 pkg/apperr/apperr.go            # kind + ToGRPC
-pkg/config/config.go            # envconfig wrapper
+pkg/config/config.go            # caarlos0/env/v11 wrapper
 pkg/logger/logger.go            # slog JSON + context handler
 pkg/otel/otel.go                # tracer provider + propagator
 pkg/event/envelope.go           # envelope chuẩn spec §7.1

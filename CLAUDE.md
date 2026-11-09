@@ -24,7 +24,7 @@ Milestones: M0 foundation+Auth+Gateway → M1 Job+Candidate+AI parse (+Kafka, ou
 - **Contracts first**: `contracts/proto` (buf) generates `gen/go` (committed, never hand-edited) plus grpc-gateway handlers and Swagger. `contracts/openapi/gateway.yaml` = generated swagger merged with `gateway.handwritten.yaml` by `tools/cmd/openapimerge`.
 - **Services never import each other's `internal/`**; sharing only via `pkg/` and `gen/go/`. Database-per-service at "level 1" (`spec.md` §4.2): one Postgres instance, each service has its own DB owned by its own least-privilege role (e.g. `auth_svc` → `auth_db`); shared Redis/Kafka/MinIO are partitioned by service prefix (Redis keys `gateway:...`).
 - **Service layout (hexagonal)**: `internal/domain` (no framework/DB/proto imports) → `internal/app` (use cases; ports in `ports.go`) → `internal/adapter/{grpc,postgres,...}` → `internal/bootstrap` (manual DI, graceful shutdown). `services/auth` is the template other Go services copy.
-- **Gateway**: chi router; cookie-handling auth routes (`/v1/auth/login|refresh|logout`), health, and later WS are hand-written; everything else under `/v1/*` falls through to the grpc-gateway mux. Middleware order: recovery → requestid → otelhttp → logging → CORS → clientip → optional auth → ratelimit (auth before ratelimit so limits key on a *verified* `sub`).
+- **Gateway**: chi router; cookie-handling auth routes (`/v1/auth/login|refresh|logout`), health, and later WS are hand-written; everything else under `/v1/*` falls through to the grpc-gateway mux. Middleware order: Recovery → RequestID → otelhttp → Logging → CORS → ClientIP → OptionalAuth → ratelimit → RejectInvalidAuth → routes (auth before ratelimit so limits key on a *verified* `sub`; an invalid bearer is rate-limited by IP, then rejected; the cookie routes `/v1/auth/login|refresh|logout` are exempt from RejectInvalidAuth).
 - **Two-layer JWT verification**: Gateway verifies, then forwards the raw JWT as gRPC metadata `authorization`; each service re-verifies via cached JWKS in the `pkg/grpcx` auth interceptor. Public RPCs are allow-listed per service.
 - **Domain errors**: return `pkg/apperr` sentinels (`ErrNotFound`, `ErrConflict`, `ErrValidation`, `ErrForbidden`, `ErrUnauthenticated`); the grpcx interceptor maps to gRPC codes, gateway `httperr` maps to HTTP + envelope `{"error":{code,message,details,request_id}}`. Unknown errors become `Internal "internal error"` (no detail leakage).
 - **Events**: written to a per-service `outbox` table in the same transaction as business data (envelope from `pkg/event`, ULID `event_id`). M0 only writes the outbox; the relay to Kafka arrives in M1.
@@ -36,11 +36,12 @@ Milestones: M0 foundation+Auth+Gateway → M1 Job+Candidate+AI parse (+Kafka, ou
 Run from Git Bash on Windows (Makefile is POSIX). Prereqs: Go, make, Docker (Go and make were not installed as of plan writing — plan Task 0).
 
 ```bash
-make bootstrap                 # install buf/sqlc/golangci-lint/migrate, generate dev JWT key (deploy/docker/secrets, gitignored)
-make proto                     # buf generate → gen/go + openapi, then merge openapi
-make sqlc                      # regenerate sqlc code
+make bootstrap                 # install pinned buf/golangci-lint/migrate, generate dev JWT key (deploy/docker/secrets, gitignored), create .env from .env.example
+make proto-deps                # buf dep update (bump buf deps, rewrites buf.lock; commit it)
+make proto                     # buf generate on the committed lock → gen/go + openapi, then merge openapi
+make sqlc                      # regenerate sqlc code (runs sqlc via Docker; not installed by bootstrap)
 make infra-up obs-up up        # postgres+redis, otel-collector+tempo+grafana, auth+gateway
-make migrate | make seed       # run migrations | create admin + sample users
+make migrate | make seed       # run migrations | create admin + sample users (seed runs the auth-seed compose service)
 make smoke                     # end-to-end auth flow through the gateway (tools/cmd/smoke)
 make test                      # unit tests, no Docker needed
 make test-int                  # integration tests (build tag `integration`, testcontainers; needs Docker)
@@ -55,11 +56,11 @@ go test ./internal/app -run TestRefresh_ReuseRevokesFamily -v
 go test -tags integration ./test/integration -run TestRefresh_ConcurrentSameToken -v
 ```
 
-Local URLs: gateway `:8080`, Grafana `:3000`, auth gRPC `:9001`, auth HTTP (JWKS/health) `:8001`.
+Local URLs (published to the host on 127.0.0.1 only): gateway `:8080`, Grafana `:3000`, Tempo `:3200`, OTel collector `:4317`. Auth gRPC `:9001` and HTTP (JWKS/health) `:8001` are internal to the compose network (`auth:9001`, `auth:8001`), not reachable from the host.
 
 ## Conventions
 
-- Config only via env with service prefix (`AUTH_`, `GATEWAY_`), loaded with `kelseyhightower/envconfig` through `pkg/config`.
+- Config only via env with service prefix (`AUTH_`, `GATEWAY_`), loaded with `github.com/caarlos0/env/v11` through `pkg/config` (unprefixed vars never satisfy a config).
 - SQL via `pgx/v5` + `sqlc` (no ORM); migrations with `golang-migrate`, append-only once merged.
 - Never log PII (email, password, tokens, CV content); `user_id` is fine.
 - Conventional Commits with service scope, e.g. `feat(auth): ...`.
