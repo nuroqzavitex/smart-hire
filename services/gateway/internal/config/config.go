@@ -1,7 +1,12 @@
 // Package config defines the gateway configuration.
 package config
 
-import "github.com/nuroqzavitex/smarthire/pkg/config"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/nuroqzavitex/smarthire/pkg/config"
+)
 
 // Config holds gateway settings, read from GATEWAY_* env vars.
 type Config struct {
@@ -22,6 +27,15 @@ type Config struct {
 // Load reads the configuration from the environment (prefix GATEWAY).
 func Load() (Config, error) {
 	var c Config
-	err := config.Load("GATEWAY", &c)
-	return c, err
+	if err := config.Load("GATEWAY", &c); err != nil {
+		return c, err
+	}
+	// CORSOrigins is also the Origin allow-list of the cookie routes and CORS
+	// runs with credentials, so wildcards would defeat the CSRF defence.
+	for _, o := range c.CORSOrigins {
+		if strings.Contains(o, "*") {
+			return c, fmt.Errorf("GATEWAY_CORS_ORIGINS: wildcard origin %q is not allowed", o)
+		}
+	}
+	return c, nil
 }

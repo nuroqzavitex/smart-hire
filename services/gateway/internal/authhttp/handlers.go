@@ -3,6 +3,7 @@ package authhttp
 import (
 	"context"
 	"encoding/json"
+	"mime"
 	"net/http"
 	"slices"
 
@@ -69,8 +70,25 @@ func (h *Handlers) checkOrigin(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
+// isJSON reports whether the request's Content-Type media type is
+// application/json. A cross-site HTML form cannot send that type without a
+// CORS preflight, so requiring it blocks login CSRF.
+func isJSON(r *http.Request) bool {
+	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	return err == nil && mt == "application/json"
+}
+
 // Login exchanges credentials for an access token and sets the refresh cookie.
+// It requires a JSON body and, when an Origin header is sent, an allowed
+// origin. A missing Origin is accepted (non-browser clients such as curl).
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
+	if !isJSON(r) {
+		httperr.Write(w, r, status.Error(codes.InvalidArgument, "content type must be application/json"))
+		return
+	}
+	if r.Header.Get("Origin") != "" && !h.checkOrigin(w, r) {
+		return
+	}
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`

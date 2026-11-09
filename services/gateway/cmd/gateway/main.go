@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/connectivity"
 
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
@@ -102,7 +101,7 @@ func run() error {
 	}
 	defer verifier.Close()
 
-	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	rdb := ratelimit.NewRedisClient(cfg.RedisAddr)
 	defer func() { _ = rdb.Close() }()
 
 	handler, err := router.New(ctx, router.Deps{
@@ -126,6 +125,9 @@ func run() error {
 		Addr:              net.JoinHostPort("", strconv.Itoa(cfg.HTTPPort)),
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 	errCh := make(chan error, 1)
 	go func() {

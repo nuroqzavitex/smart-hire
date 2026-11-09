@@ -86,6 +86,21 @@ func TestRefresh_ReuseRevokesFamily(t *testing.T) {
 	assert.ErrorIs(t, err, apperr.ErrUnauthenticated)
 }
 
+func TestRefresh_ReuseRevokesFamilyWithCancelledContext(t *testing.T) {
+	r := newRefreshEnv(t)
+	p1 := r.login(t)
+	p2, err := r.svc.Refresh(context.Background(), p1.RefreshToken)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // client went away
+	_, err = r.svc.Refresh(ctx, p1.RefreshToken)
+	assert.ErrorIs(t, err, apperr.ErrUnauthenticated)
+	assert.True(t, *r.committed, "family revocation must commit despite a cancelled ctx")
+	nw, _ := r.tokens.byHash(p2.RefreshToken)
+	assert.NotNil(t, nw.RevokedAt)
+}
+
 func TestRefresh_Expired(t *testing.T) {
 	r := newRefreshEnv(t)
 	p1 := r.login(t)

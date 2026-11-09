@@ -52,11 +52,15 @@ func ToGRPC(err error) error {
 		return err
 	}
 	var ae *appError
-	if errors.As(err, &ae) {
-		for _, kc := range kindCodes {
-			if errors.Is(err, kc.kind) {
+	hasMsg := errors.As(err, &ae)
+	for _, kc := range kindCodes {
+		if errors.Is(err, kc.kind) {
+			if hasMsg {
 				return status.Error(kc.code, ae.msg)
 			}
+			// Bare (possibly wrapped) sentinel: use the sentinel's own
+			// message, not the wrapping text, which may carry internals.
+			return status.Error(kc.code, kc.kind.Error())
 		}
 	}
 	switch {

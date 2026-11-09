@@ -36,6 +36,14 @@ func TestToGRPC(t *testing.T) {
 		{context.Canceled, codes.Canceled, "canceled"},
 		{status.Error(codes.Unavailable, "down"), codes.Unavailable, "down"},
 		{errors.New("pq: secret detail"), codes.Internal, "internal error"},
+		// Bare sentinels map to their code with the sentinel's own message,
+		// never the wrapping text (which may carry internal detail).
+		{apperr.ErrNotFound, codes.NotFound, "not found"},
+		{fmt.Errorf("get user 42: %w", apperr.ErrNotFound), codes.NotFound, "not found"},
+		{fmt.Errorf("x: %w", apperr.ErrConflict), codes.AlreadyExists, "conflict"},
+		{fmt.Errorf("x: %w", apperr.ErrValidation), codes.InvalidArgument, "validation failed"},
+		{fmt.Errorf("x: %w", apperr.ErrForbidden), codes.PermissionDenied, "forbidden"},
+		{fmt.Errorf("x: %w", apperr.ErrUnauthenticated), codes.Unauthenticated, "unauthenticated"},
 	}
 	for _, c := range cases {
 		st, _ := status.FromError(apperr.ToGRPC(c.in))

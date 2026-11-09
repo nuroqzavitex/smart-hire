@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
@@ -25,6 +24,7 @@ import (
 	authv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/auth/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
 	"github.com/nuroqzavitex/smarthire/pkg/authz/authztest"
+	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/config"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/ratelimit"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/router"
@@ -34,16 +34,19 @@ const origin = "https://app.example"
 
 type fakeAuth struct {
 	authv1.UnimplementedAuthServiceServer
-	mu           sync.Mutex
-	registerErr  error
-	getMeCalls   int
-	refreshCalls int
-	getMeMD      metadata.MD
+	mu            sync.Mutex
+	registerErr   error
+	registerCalls int
+	getMeCalls    int
+	refreshCalls  int
+	getMeMD       metadata.MD
+	getMeDeadline time.Time
 }
 
 func (f *fakeAuth) Register(context.Context, *authv1.RegisterRequest) (*authv1.RegisterResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.registerCalls++
 	if f.registerErr != nil {
 		return nil, f.registerErr
 	}
@@ -55,6 +58,8 @@ func (f *fakeAuth) GetMe(ctx context.Context, _ *authv1.GetMeRequest) (*authv1.U
 	defer f.mu.Unlock()
 	f.getMeCalls++
 	f.getMeMD, _ = metadata.FromIncomingContext(ctx)
+	f.getMeDeadline, _ = ctx.Deadline()
+	_ = grpc.SetHeader(ctx, metadata.Pairs("x-internal", "secret"))
 	return &authv1.User{Id: "u-1", Email: "a@x.com"}, nil
 }
 
@@ -110,9 +115,8 @@ func setup(t *testing.T) *env {
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 
-	conn, err := grpc.NewClient("passthrough:///bufnet",
-		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return lis.Dial() }),
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpcx.Dial("passthrough:///bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return lis.Dial() }))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
@@ -159,7 +163,7 @@ func TestRouter_RegisterReturns201(t *testing.T) {
 
 func TestRouter_LoginSetsCookie(t *testing.T) {
 	e := setup(t)
-	rec := e.do("POST", "/v1/auth/login", `{"email":"a@x.com","password":"password1"}`, nil)
+	rec := e.do("POST", "/v1/auth/login", `{"email":"a@x.com","password":"password1"}`, jsonHdr)
 	assert.Equal(t, 200, rec.Code)
 	assert.JSONEq(t, `{"access_token":"AT","expires_in":900}`, rec.Body.String())
 	assert.Contains(t, strings.Join(rec.Header().Values("Set-Cookie"), "\n"), "sh_rt=RT")
@@ -243,4 +247,37 @@ func TestRouter_Health(t *testing.T) {
 	e := setup(t)
 	assert.Equal(t, 200, e.do("GET", "/healthz", "", nil).Code)
 	assert.Equal(t, 200, e.do("GET", "/readyz", "", nil).Code)
+}
+
+func TestRouter_OversizedBodyRejected(t *testing.T) {
+	e := setup(t)
+	big := `{"email":"a@x.com","password":"` + strings.Repeat("a", 100<<10) + `","role":"ROLE_CANDIDATE"}`
+	rec := e.do("POST", "/v1/auth/register", big, jsonHdr)
+	assert.GreaterOrEqual(t, rec.Code, 400, rec.Body.String())
+	assert.Less(t, rec.Code, 500, rec.Body.String())
+	e.fake.mu.Lock()
+	defer e.fake.mu.Unlock()
+	assert.Equal(t, 0, e.fake.registerCalls)
+}
+
+func TestRouter_ClientGrpcTimeoutIgnored(t *testing.T) {
+	e := setup(t)
+	tok := e.is.Sign(t, "u-1", authz.RoleCandidate, time.Minute)
+	rec := e.do("GET", "/v1/me", "", map[string]string{"Authorization": "Bearer " + tok, "Grpc-Timeout": "1H"})
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	e.fake.mu.Lock()
+	defer e.fake.mu.Unlock()
+	require.False(t, e.fake.getMeDeadline.IsZero())
+	assert.LessOrEqual(t, time.Until(e.fake.getMeDeadline), grpcx.DefaultTimeout)
+}
+
+func TestRouter_GRPCMetadataNotForwarded(t *testing.T) {
+	e := setup(t)
+	tok := e.is.Sign(t, "u-1", authz.RoleCandidate, time.Minute)
+	rec := e.do("GET", "/v1/me", "", map[string]string{"Authorization": "Bearer " + tok, "TE": "trailers"})
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	for k := range rec.Header() {
+		assert.NotContains(t, strings.ToLower(k), "grpc-metadata", k)
+		assert.NotContains(t, strings.ToLower(k), "grpc-trailer", k)
+	}
 }

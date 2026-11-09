@@ -33,3 +33,12 @@ func TestLoad_Override(t *testing.T) {
 	assert.Equal(t, []string{"http://a.test", "http://b.test"}, c.CORSOrigins)
 	assert.False(t, c.CookieSecure)
 }
+
+func TestLoad_RejectsWildcardCORSOrigin(t *testing.T) {
+	for _, v := range []string{"*", "http://a.test,*", "https://*.example.com"} {
+		t.Setenv("GATEWAY_CORS_ORIGINS", v)
+		_, err := config.Load()
+		require.Error(t, err, v)
+		assert.Contains(t, err.Error(), "GATEWAY_CORS_ORIGINS", v)
+	}
+}

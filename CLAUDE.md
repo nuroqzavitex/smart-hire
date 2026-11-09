@@ -4,13 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-SmartHire is a recruiting platform (CV parsing, CV↔JD matching, application tracking) built as a **Backend-Go portfolio project**. As of now the repo contains **only design documents, no code**:
+SmartHire is a recruiting platform (CV parsing, CV↔JD matching, application tracking) built as a **Backend-Go portfolio project**. Milestone **M0 (foundation + Auth + Gateway) is implemented**:
+
+- `pkg/` — shared libraries: `apperr`, `authz` (JWT/JWKS verifier, `authztest`), `config`, `event`, `grpcx`, `logger`, `otel`.
+- `gen/go/` — generated protobuf/gRPC/grpc-gateway code (from `contracts/proto`).
+- `services/auth` — Auth service; **the template service** later Go services copy.
+- `services/gateway` — HTTP gateway (chi + grpc-gateway, rate limiting, cookie auth routes).
+- `tools/cmd/` — `keygen`, `openapimerge`, `smoke`.
+- `deploy/docker` — Compose stack (Postgres, Redis, OTel collector, Tempo, Grafana, auth, gateway); `.github/workflows` — CI.
+
+Design documents:
 
 - `spec.md` — full target system spec (Vietnamese). Source of truth for event envelope (§7.1), topics (§7.2), data models (§8), REST error format (§13.1), NFRs (§14).
 - `docs/superpowers/specs/2026-11-08-m0-foundation-auth-gateway-design.md` — approved design for milestone M0. Where it differs from `spec.md`, the M0 design wins (see its §8 "Lệch so với spec.md").
 - `docs/superpowers/plans/2026-11-08-m0-foundation-auth-gateway.md` — task-by-task TDD implementation plan for M0 (Tasks 0–16), with exact interfaces, env vars, ports, and test names.
+- `docs/adr/` — architecture decision records (0001–0004 from M0).
 
-Before implementing anything, read the relevant plan task and its **Interfaces** block; later tasks depend on the exact names/signatures defined there. The user writes in Vietnamese; reply in Vietnamese.
+When extending M0 code, keep the names/signatures from the plan's **Interfaces** blocks. The user writes in Vietnamese; reply in Vietnamese.
 
 ## Scope strategy (decided with the user)
 
@@ -31,9 +41,9 @@ Milestones: M0 foundation+Auth+Gateway → M1 Job+Candidate+AI parse (+Kafka, ou
 - **Account status**: `users.status` ∈ `ACTIVE|LOCKED|DELETION_PENDING`; login checks it only *after* the password matches (403 for inactive), refresh returns 401 for inactive users.
 - **Refresh tokens**: opaque, sha256-hashed, rotated within a `family_id`; reuse of a revoked token revokes the whole family. The family revocation must **commit** even though the call returns `Unauthenticated` (the closure returns nil, error is returned after the tx) — see plan Task 7.
 
-## Commands (defined by the plan; available once the corresponding tasks are implemented)
+## Commands
 
-Run from Git Bash on Windows (Makefile is POSIX). Prereqs: Go, make, Docker (Go and make were not installed as of plan writing — plan Task 0).
+Prereqs: Go 1.27, make, Docker. On Windows run everything from Git Bash (the Makefile is POSIX).
 
 ```bash
 make bootstrap                 # install pinned buf/golangci-lint/migrate, generate dev JWT key (deploy/docker/secrets, gitignored), create .env from .env.example
@@ -54,6 +64,11 @@ Single test (run inside the module directory, e.g. `services/auth`):
 ```bash
 go test ./internal/app -run TestRefresh_ReuseRevokesFamily -v
 go test -tags integration ./test/integration -run TestRefresh_ConcurrentSameToken -v
+```
+
+`-race` needs cgo on Linux; on Windows run it in a container (from the repo root):
+```bash
+MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd):/src" -w /src golang:1.27 bash -c 'for m in pkg services/auth services/gateway tools; do (cd $m && go test -race ./...) || exit 1; done'
 ```
 
 Local URLs (published to the host on 127.0.0.1 only): gateway `:8080`, Grafana `:3000`, Tempo `:3200`, OTel collector `:4317`. Auth gRPC `:9001` and HTTP (JWKS/health) `:8001` are internal to the compose network (`auth:9001`, `auth:8001`), not reachable from the host.

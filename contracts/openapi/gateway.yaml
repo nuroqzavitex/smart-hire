@@ -105,8 +105,12 @@ info:
 paths:
   /v1/auth/login:
     post:
-      description: Rate limited to 10 requests per minute per IP. Sets the HttpOnly
+      description: 'Rate limited to 10 requests per minute per IP. Sets the HttpOnly
         `sh_rt` refresh cookie (Path=/v1/auth) and the `sh_session=1` marker cookie.
+        Login CSRF defence: the `Content-Type` media type must be `application/json`
+        (400 INVALID_ARGUMENT otherwise), and if an `Origin` header is sent it must
+        be on the allow-list (403 PERMISSION_DENIED otherwise). A request without
+        `Origin` (e.g. curl) is accepted.'
       operationId: Gateway_Login
       parameters:
       - in: body
@@ -127,11 +131,15 @@ paths:
           schema:
             $ref: '#/definitions/TokenResponse'
         "400":
-          description: Invalid request body.
+          description: Invalid request body, or Content-Type is not application/json.
           schema:
             $ref: '#/definitions/ErrorEnvelope'
         "401":
           description: Invalid credentials.
+          schema:
+            $ref: '#/definitions/ErrorEnvelope'
+        "403":
+          description: Origin not allowed, or account not active.
           schema:
             $ref: '#/definitions/ErrorEnvelope'
         "429":

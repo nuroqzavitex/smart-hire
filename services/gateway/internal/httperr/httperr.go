@@ -48,8 +48,22 @@ func httpStatus(c codes.Code) int {
 	}
 }
 
+// clientMessage hides server-side detail (addresses, driver errors) carried by
+// gRPC client/transport errors: those codes get a generic message.
+func clientMessage(st *status.Status) string {
+	switch st.Code() {
+	case codes.Internal, codes.Unknown, codes.DataLoss:
+		return "internal error"
+	case codes.Unavailable:
+		return "service unavailable"
+	default:
+		return st.Message()
+	}
+}
+
 // Write renders err as the error envelope. Errors that are not gRPC statuses
-// are reported as INTERNAL "internal error" so their text never leaks.
+// are reported as INTERNAL "internal error", and server-side codes get a
+// generic message, so internal error text never leaks.
 func Write(w http.ResponseWriter, r *http.Request, err error) {
 	st, ok := status.FromError(err)
 	if !ok {
@@ -60,7 +74,7 @@ func Write(w http.ResponseWriter, r *http.Request, err error) {
 	w.WriteHeader(httpStatus(code))
 	_ = json.NewEncoder(w).Encode(body{Error: detail{
 		Code:      rpccode.Code(code).String(), //nolint:gosec // gRPC codes are 0..16
-		Message:   st.Message(),
+		Message:   clientMessage(st),
 		Details:   []any{},
 		RequestID: logger.RequestIDFrom(r.Context()),
 	}})

@@ -40,7 +40,7 @@
 **Mục tiêu:** dựng bộ khung chuẩn cho mọi service Go về sau và chứng minh nó bằng một luồng thật: `register → login → GET /v1/me → refresh → logout` qua Gateway, xem được trace trên Grafana.
 
 ### 2.1 Trong phạm vi
-- `git init`; monorepo theo `spec.md` §10 nhưng chỉ tạo phần M0 cần: `go.work`, `contracts/proto/smarthire/auth/v1`, cấu hình `buf`, `gen/go` (commit), `pkg/`, `services/auth`, `services/gateway`, `deploy/docker`, `tools/smoke`, `docs/adr`.
+- `git init`; monorepo theo `spec.md` §10 nhưng chỉ tạo phần M0 cần: `go.work`, `contracts/proto/smarthire/auth/v1`, cấu hình `buf`, `gen/go` (commit), `pkg/`, `services/auth`, `services/gateway`, `deploy/docker`, `tools/cmd/smoke`, `docs/adr`.
 - Auth service đầy đủ: đăng ký, đăng nhập, refresh có rotate và phát hiện dùng lại, logout, JWKS, RBAC.
 - Gateway: chi + grpc-gateway, verify JWT qua JWKS, rate limit Redis, CORS, request ID, cookie refresh.
 - Compose: Postgres, Redis, OTel Collector, Tempo, Grafana.
@@ -67,11 +67,11 @@ Một Go module duy nhất `github.com/nuroqzavitex/smarthire/pkg`. Mỗi packag
 | Package | Trách nhiệm | API chính |
 |---|---|---|
 | `config` | Đọc env theo prefix (`AUTH_`, `GATEWAY_`), validate trường bắt buộc, lỗi rõ ràng khi khởi động | `config.Load(prefix string, dst any) error` |
-| `logger` | `slog` JSON; tự gắn `trace_id`, `span_id`, `request_id`, `user_id` từ context; không log PII | `logger.New(service string) *slog.Logger`, `logger.From(ctx) *slog.Logger` |
+| `logger` | `slog` JSON; tự gắn `trace_id`, `span_id`, `request_id`, `user_id` từ context; không log PII | `logger.New(service string, w io.Writer, level slog.Level) *slog.Logger`, `logger.From(ctx) *slog.Logger` |
 | `otel` | TracerProvider OTLP gRPC → Collector; propagator W3C `traceparent` | `otel.Setup(ctx, service) (shutdown func(context.Context) error, err error)` |
 | `apperr` (thư mục `pkg/apperr`, tránh trùng tên stdlib `errors`) | Sentinel: `ErrNotFound`, `ErrConflict`, `ErrValidation`, `ErrForbidden`, `ErrUnauthenticated`; map sang gRPC status theo `spec.md` §11 | `apperr.ToGRPC(err) error` |
-| `grpcx` | Server builder với interceptor: recovery → otel → logging → auth → protovalidate; health service chuẩn; graceful shutdown; client dial có timeout mặc định | `grpcx.NewServer(opts...)`, `grpcx.Dial(ctx, target, opts...)` |
-| `authz` | Verify JWT RS256 qua JWKS (cache, refresh khi gặp `kid` lạ); struct `Claims{Sub, Role, ...}`; `RequireRole`; helper context | `authz.NewVerifier(jwksURL, issuer, audience)`, `authz.ClaimsFrom(ctx)`, `authz.WithClaims(ctx, c)` |
+| `grpcx` | Server builder với interceptor: recovery → otel → logging → auth → protovalidate; health service chuẩn; graceful shutdown; client dial có timeout mặc định | `grpcx.NewServer(opts...)`, `grpcx.Dial(target, opts...)` |
+| `authz` | Verify JWT RS256 qua JWKS (cache, refresh khi gặp `kid` lạ); struct `Claims{Sub, Role, ...}`; `RequireRole`; helper context | `authz.NewVerifier(ctx, jwksURL, issuer, audience)`, `authz.ClaimsFrom(ctx)`, `authz.WithClaims(ctx, c)` |
 
 **Verify token hai lớp (ADR 0003):** Gateway verify JWT rồi chuyển **nguyên JWT** xuống service qua metadata `authorization`. Interceptor `auth` của `grpcx` verify lại bằng JWKS đã cache. Lý do: `spec.md` §14.4 yêu cầu RBAC + ownership check tại service; tin header `x-user-id` từ Gateway thì ai gọi thẳng vào service là giả mạo được user. RPC public (vd. `Register`, `Login`) được khai báo trong allowlist của interceptor.
 
@@ -158,7 +158,7 @@ JWT RS256, TTL 15 phút. Claims: `sub`, `role`, `iss`, `aud`, `exp`, `iat`, `jti
 | `POST /v1/auth/login` | chi viết tay | gọi `Login`; body chỉ `access_token`, `expires_in`; set cookie `sh_rt` (`HttpOnly; Secure; SameSite=Strict; Path=/v1/auth`, Max-Age 7 ngày) và cookie cờ `sh_session` (không chứa token) |
 | `POST /v1/auth/refresh` | chi viết tay | đọc `sh_rt`; kiểm tra `Origin` thuộc allowlist (chống CSRF); rotate; set lại cookie |
 | `POST /v1/auth/logout` | chi viết tay | gọi `Logout`; xoá cả hai cookie |
-| `/healthz`, `/readyz` | chi | `readyz` kiểm tra Redis + kết nối gRPC tới Auth |
+| `/healthz`, `/readyz` | chi | `readyz` chỉ kiểm tra kết nối gRPC tới Auth; không kiểm tra Redis vì rate limiter fail-open |
 
 - Route viết tay đăng ký trước; grpc-gateway mount làm fallback cho `/v1/*` (ADR 0002).
 - Chuyển xuống service: `authorization`, `x-request-id`; `traceparent` do `otelgrpc`.
@@ -210,10 +210,10 @@ Custom error handler của grpc-gateway, dùng chung cho route viết tay. Map g
 | `migrate` | chạy migration |
 | `seed` | tạo admin + user mẫu |
 | `test` / `test-int` | unit / integration |
-| `smoke` | `go run ./tools/smoke` trên stack đang chạy |
+| `smoke` | `go run ./tools/cmd/smoke` trên stack đang chạy |
 | `lint` | golangci-lint + buf lint |
 
-### 6.3 Smoke test (`tools/smoke/`)
+### 6.3 Smoke test (`tools/cmd/smoke/`)
 Chạy qua Gateway thật, fail nếu bất kỳ bước nào sai:
 1. register (candidate) → 201
 2. login → 200, có cookie `sh_rt`

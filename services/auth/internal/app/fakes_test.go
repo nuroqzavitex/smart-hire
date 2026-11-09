@@ -14,10 +14,17 @@ import (
 )
 
 // fakeTx runs fn directly and records whether fn returned nil (i.e. a real
-// transaction would have committed).
+// transaction would have committed). Like a real Begin, it fails on a
+// cancelled ctx.
 type fakeTx struct{ lastCommitted *bool }
 
 func (f fakeTx) WithTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if err := ctx.Err(); err != nil {
+		if f.lastCommitted != nil {
+			*f.lastCommitted = false
+		}
+		return err
+	}
 	err := fn(ctx)
 	if f.lastCommitted != nil {
 		*f.lastCommitted = err == nil

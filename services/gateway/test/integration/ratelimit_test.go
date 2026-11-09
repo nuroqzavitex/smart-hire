@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,9 +29,7 @@ func startRedis(t *testing.T) (*redis.Client, *tcredis.RedisContainer) {
 	require.NoError(t, err)
 	opt, err := redis.ParseURL(uri)
 	require.NoError(t, err)
-	opt.MaxRetries = 0
-	opt.DialTimeout = 500 * time.Millisecond
-	rdb := redis.NewClient(opt)
+	rdb := ratelimit.NewRedisClient(opt.Addr)
 	t.Cleanup(func() { _ = rdb.Close() })
 	return rdb, ctr
 }
@@ -64,4 +63,32 @@ func TestLimiter_RedisDownFailsOpen(t *testing.T) {
 	middleware.ClientIP(nil)(h).ServeHTTP(w, r)
 	assert.True(t, called)
 	assert.Equal(t, 200, w.Code)
+}
+
+// TestLimiter_HangingRedisFailsFast checks that the real client honours the
+// limiter's ctx deadline when Redis accepts connections but never replies.
+func TestLimiter_HangingRedisFailsFast(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		var conns []net.Conn // held open, never answered
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				for _, c := range conns {
+					_ = c.Close()
+				}
+				return
+			}
+			conns = append(conns, c)
+		}
+	}()
+
+	rdb := ratelimit.NewRedisClient(ln.Addr().String())
+	t.Cleanup(func() { _ = rdb.Close() })
+	start := time.Now()
+	_, err = ratelimit.New(rdb).Allow(t.Context(), "k", 10, time.Minute)
+	require.Error(t, err)
+	assert.Less(t, time.Since(start), 300*time.Millisecond)
 }

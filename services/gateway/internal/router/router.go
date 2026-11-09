@@ -71,6 +71,22 @@ func incomingHeaderMatcher(key string) (string, bool) {
 	return "", false
 }
 
+// maxBodyBytes caps request bodies forwarded to the grpc-gateway mux.
+const maxBodyBytes = 64 << 10
+
+// dropHeader never forwards gRPC response metadata or trailers to clients
+// (no Grpc-Metadata-* / Grpc-Trailer-* headers).
+func dropHeader(string) (string, bool) { return "", false }
+
+// stripGRPCTimeout removes the client's Grpc-Timeout header so callers cannot
+// override grpcx.DefaultTimeout with their own deadline.
+func stripGRPCTimeout(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Del("Grpc-Timeout")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // New builds the gateway handler. Chain order (ruling R16):
 // Recovery, RequestID, otelhttp, Logging, CORS, ClientIP, OptionalAuth,
 // ratelimit, RejectInvalidAuth, routes (RejectInvalidAuth applies to every
@@ -84,6 +100,8 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	mux := runtime.NewServeMux(
 		runtime.WithErrorHandler(httperr.GatewayErrorHandler),
 		runtime.WithIncomingHeaderMatcher(incomingHeaderMatcher),
+		runtime.WithOutgoingHeaderMatcher(dropHeader),
+		runtime.WithOutgoingTrailerMatcher(dropHeader),
 		runtime.WithMetadata(func(ctx context.Context, _ *http.Request) metadata.MD {
 			if id := logger.RequestIDFrom(ctx); id != "" {
 				return metadata.Pairs("x-request-id", id)
@@ -104,6 +122,8 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	if err := authv1.RegisterAuthServiceHandlerClient(ctx, mux, client); err != nil {
 		return nil, fmt.Errorf("register auth gateway handler: %w", err)
 	}
+
+	api := stripGRPCTimeout(http.MaxBytesHandler(mux, maxBodyBytes))
 
 	userRule := ratelimit.UserRule()
 	userRule.Limit = d.Cfg.RateLimitUserPerMin
@@ -149,8 +169,8 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 			}
 			w.WriteHeader(http.StatusOK)
 		})
-		r.With(middleware.RequireAuth).Get("/v1/me", mux.ServeHTTP)
-		r.Handle("/v1/*", mux)
+		r.With(middleware.RequireAuth).Get("/v1/me", api.ServeHTTP)
+		r.Handle("/v1/*", api)
 	})
 	return r, nil
 }

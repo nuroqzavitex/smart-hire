@@ -23,6 +23,7 @@ const allowedOrigin = "https://app.example"
 type fakeClient struct {
 	authv1.AuthServiceClient
 	refreshErr   error
+	loginCalls   int
 	refreshCalls int
 	logoutCalls  int
 	lastLogout   string
@@ -30,6 +31,7 @@ type fakeClient struct {
 }
 
 func (f *fakeClient) Login(_ context.Context, in *authv1.LoginRequest, _ ...grpc.CallOption) (*authv1.TokenPair, error) {
+	f.loginCalls++
 	if in.GetEmail() != "a@x.com" {
 		return nil, status.Error(codes.Unauthenticated, "bad credentials")
 	}
@@ -76,8 +78,47 @@ func cookie(rec *httptest.ResponseRecorder, name string) *http.Cookie {
 	return nil
 }
 
+var jsonHdr = map[string]string{"Content-Type": "application/json"}
+
+func TestLogin_RejectsNonJSONContentType(t *testing.T) {
+	for _, ct := range []string{"text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x", ""} {
+		fake := &fakeClient{}
+		rec := do(t, fake, login, `{"email":"a@x.com","password":"password1"}`, map[string]string{"Content-Type": ct})
+		assert.Equal(t, 400, rec.Code, ct)
+		assert.Contains(t, rec.Body.String(), `"INVALID_ARGUMENT"`, ct)
+		assert.Equal(t, 0, fake.loginCalls, ct)
+		assert.Nil(t, cookie(rec, "sh_rt"), ct)
+	}
+}
+
+func TestLogin_AcceptsJSONWithCharset(t *testing.T) {
+	rec := do(t, &fakeClient{}, login, `{"email":"a@x.com","password":"password1"}`,
+		map[string]string{"Content-Type": "application/json; charset=utf-8"})
+	assert.Equal(t, 200, rec.Code)
+}
+
+func TestLogin_RejectsBadOrigin(t *testing.T) {
+	fake := &fakeClient{}
+	rec := do(t, fake, login, `{"email":"a@x.com","password":"password1"}`,
+		map[string]string{"Content-Type": "application/json", "Origin": "https://evil.example"})
+	assert.Equal(t, 403, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"PERMISSION_DENIED"`)
+	assert.Equal(t, 0, fake.loginCalls)
+	assert.Nil(t, cookie(rec, "sh_rt"))
+}
+
+func TestLogin_AllowedOrNoOrigin(t *testing.T) {
+	for _, hdr := range []map[string]string{
+		{"Content-Type": "application/json"},
+		{"Content-Type": "application/json", "Origin": allowedOrigin},
+	} {
+		rec := do(t, &fakeClient{}, login, `{"email":"a@x.com","password":"password1"}`, hdr)
+		assert.Equal(t, 200, rec.Code, hdr)
+	}
+}
+
 func TestLogin_SetsCookiesAndHidesRefreshToken(t *testing.T) {
-	rec := do(t, &fakeClient{}, login, `{"email":"a@x.com","password":"password1"}`, nil)
+	rec := do(t, &fakeClient{}, login, `{"email":"a@x.com","password":"password1"}`, jsonHdr)
 	assert.Equal(t, 200, rec.Code)
 	assert.JSONEq(t, `{"access_token":"AT","expires_in":900}`, rec.Body.String())
 	assert.NotContains(t, rec.Body.String(), "RT")
@@ -101,25 +142,26 @@ func TestLogin_SetsCookiesAndHidesRefreshToken(t *testing.T) {
 func TestLogin_InsecureWhenConfigured(t *testing.T) {
 	hs := authhttp.New(&fakeClient{}, authhttp.Config{CookieSecure: false})
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", strings.NewReader(`{"email":"a@x.com","password":"p"}`))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	hs.Login(rec, req)
 	assert.False(t, cookie(rec, "sh_rt").Secure)
 }
 
 func TestLogin_BadJSON(t *testing.T) {
-	rec := do(t, &fakeClient{}, login, `{nope`, nil)
+	rec := do(t, &fakeClient{}, login, `{nope`, jsonHdr)
 	assert.Equal(t, 400, rec.Code)
 	assert.Contains(t, rec.Body.String(), `"INVALID_ARGUMENT"`)
 	assert.Nil(t, cookie(rec, "sh_rt"))
 }
 
 func TestLogin_BodyTooLarge(t *testing.T) {
-	rec := do(t, &fakeClient{}, login, `{"email":"`+strings.Repeat("a", 5000)+`"}`, nil)
+	rec := do(t, &fakeClient{}, login, `{"email":"`+strings.Repeat("a", 5000)+`"}`, jsonHdr)
 	assert.Equal(t, 400, rec.Code)
 }
 
 func TestLogin_GRPCErrorMapped(t *testing.T) {
-	rec := do(t, &fakeClient{}, login, `{"email":"zzz@x.com","password":"p"}`, nil)
+	rec := do(t, &fakeClient{}, login, `{"email":"zzz@x.com","password":"p"}`, jsonHdr)
 	assert.Equal(t, 401, rec.Code)
 	assert.Contains(t, rec.Body.String(), `"UNAUTHENTICATED"`)
 	assert.Nil(t, cookie(rec, "sh_rt"))

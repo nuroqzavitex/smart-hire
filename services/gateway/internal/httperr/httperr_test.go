@@ -25,7 +25,7 @@ func req() *http.Request {
 func TestWrite_MapsCodes(t *testing.T) {
 	for code, want := range map[codes.Code]int{codes.InvalidArgument: 400, codes.Unauthenticated: 401,
 		codes.PermissionDenied: 403, codes.NotFound: 404, codes.AlreadyExists: 409, codes.ResourceExhausted: 429,
-		codes.DeadlineExceeded: 504, codes.Unavailable: 503, codes.Internal: 500, codes.DataLoss: 500} {
+		codes.DeadlineExceeded: 504} {
 		rec := httptest.NewRecorder()
 		httperr.Write(rec, req(), status.Error(code, "m"))
 		assert.Equal(t, want, rec.Code)
@@ -41,4 +41,23 @@ func TestWrite_NonStatusErrorDoesNotLeak(t *testing.T) {
 	assert.Equal(t, 500, rec.Code)
 	assert.NotContains(t, rec.Body.String(), "secret")
 	assert.JSONEq(t, `{"error":{"code":"INTERNAL","message":"internal error","details":[],"request_id":"rid"}}`, rec.Body.String())
+}
+
+func TestWrite_ServerErrorsUseGenericMessage(t *testing.T) {
+	for code, want := range map[codes.Code]struct {
+		status int
+		msg    string
+	}{
+		codes.Internal:    {500, "internal error"},
+		codes.Unknown:     {500, "internal error"},
+		codes.DataLoss:    {500, "internal error"},
+		codes.Unavailable: {503, "service unavailable"},
+	} {
+		rec := httptest.NewRecorder()
+		httperr.Write(rec, req(), status.Error(code, "dial tcp 10.0.0.7:9001: connection refused"))
+		assert.Equal(t, want.status, rec.Code, code)
+		assert.NotContains(t, rec.Body.String(), "10.0.0.7", code)
+		assert.JSONEq(t, fmt.Sprintf(`{"error":{"code":%q,"message":%q,"details":[],"request_id":"rid"}}`,
+			rpccode.Code(code).String(), want.msg), rec.Body.String()) //nolint:gosec // gRPC codes are 0..16
+	}
 }

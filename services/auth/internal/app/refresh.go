@@ -13,12 +13,13 @@ import (
 // Refresh rotates a refresh token within its family. Presenting an already
 // revoked token is treated as theft: the whole family is revoked and that
 // revocation is committed (the closure returns nil) even though the call then
-// fails with ErrInvalidRefreshToken.
+// fails with ErrInvalidRefreshToken. The transaction runs detached from ctx
+// cancellation so a client disconnect cannot skip the family revocation.
 func (s *Service) Refresh(ctx context.Context, raw string) (TokenPair, error) {
 	var pair TokenPair
 	var reuse bool
 	var famID, userID uuid.UUID
-	err := s.Tx.WithTx(ctx, func(ctx context.Context) error {
+	err := s.Tx.WithTx(context.WithoutCancel(ctx), func(ctx context.Context) error {
 		t, err := s.Tokens.GetByHashForUpdate(ctx, hashRefresh(raw))
 		if errors.Is(err, apperr.ErrNotFound) {
 			return domain.ErrInvalidRefreshToken
