@@ -122,8 +122,8 @@ JWT RS256, TTL 15 phút. Claims: `sub`, `role`, `iss`, `aud`, `exp`, `iat`, `jti
 - Login tạo `family_id` mới.
 - Refresh, trong một transaction:
   1. `SELECT … FOR UPDATE` theo `token_hash`. Không thấy → `Unauthenticated`.
-  2. Hết hạn → `Unauthenticated`.
-  3. `revoked_at` khác NULL → **token bị dùng lại**: thu hồi toàn bộ token cùng `family_id`, log cảnh báo (`event=refresh_token_reuse`, `user_id`, `family_id`), trả `Unauthenticated`.
+  2. `revoked_at` khác NULL → **token bị dùng lại**: thu hồi toàn bộ token cùng `family_id`, log cảnh báo (`event=refresh_token_reuse`, `user_id`, `family_id`), trả `Unauthenticated`. Kiểm tra **trước** hạn dùng: token đã xoay vòng bị phát lại sau khi hết hạn vẫn là dấu hiệu bị đánh cắp.
+  3. Hết hạn → `Unauthenticated`.
   4. Nạp user; user không `ACTIVE` → `Unauthenticated` (không thu hồi family).
   5. Hợp lệ → set `revoked_at`, tạo token mới cùng family, ghi `replaced_by`, trả cặp token mới.
 - Logout: thu hồi token hiện tại (idempotent — token không tồn tại vẫn trả OK).
