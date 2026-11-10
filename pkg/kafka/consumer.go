@@ -18,6 +18,8 @@ import (
 )
 
 // Handler processes one decoded event. Return Permanent(err) to skip retries.
+// The returned error is logged and copied into the dlq-error header: it must
+// not contain PII (emails, names, CV text, tokens).
 type Handler func(ctx context.Context, env event.Envelope, rec *kgo.Record) error
 
 // ConsumerConfig configures a Consumer. Zero values: MaxAttempts 3,
@@ -44,6 +46,14 @@ type Consumer struct {
 func NewConsumer(cfg ConsumerConfig) (*Consumer, error) {
 	if cfg.Handler == nil {
 		return nil, errors.New("kafka consumer: nil handler")
+	}
+	switch {
+	case len(cfg.Brokers) == 0:
+		return nil, errors.New("kafka consumer: empty brokers")
+	case cfg.Group == "":
+		return nil, errors.New("kafka consumer: empty group")
+	case len(cfg.Topics) == 0:
+		return nil, errors.New("kafka consumer: empty topics")
 	}
 	if cfg.MaxAttempts <= 0 {
 		cfg.MaxAttempts = 3
@@ -138,10 +148,10 @@ func (c *Consumer) process(parent context.Context, rec *kgo.Record) (bool, error
 
 	var env event.Envelope
 	if err := json.Unmarshal(rec.Value, &env); err != nil {
-		return c.toDLQ(ctx, parent, rec, fmt.Errorf("decode envelope: %w", err), 0)
+		return c.toDLQ(ctx, parent, span, rec, fmt.Errorf("decode envelope: %w", err), 0, dlqReasonDecode)
 	}
 	if env.EventID == "" || env.EventType == "" {
-		return c.toDLQ(ctx, parent, rec, errors.New("decode envelope: missing event_id or event_type"), 0)
+		return c.toDLQ(ctx, parent, span, rec, errors.New("decode envelope: missing event_id or event_type"), 0, dlqReasonDecode)
 	}
 
 	for attempt := 1; ; attempt++ {
@@ -154,9 +164,11 @@ func (c *Consumer) process(parent context.Context, rec *kgo.Record) (bool, error
 		}
 		c.cfg.Logger.Warn("kafka handler failed", "topic", rec.Topic, "partition", rec.Partition,
 			"offset", rec.Offset, "event_id", env.EventID, "attempt", attempt, "error", err)
-		if IsPermanent(err) || attempt >= c.cfg.MaxAttempts {
-			span.SetStatus(codes.Error, "handler failed")
-			return c.toDLQ(ctx, parent, rec, err, attempt)
+		if IsPermanent(err) {
+			return c.toDLQ(ctx, parent, span, rec, err, attempt, dlqReasonPermanent)
+		}
+		if attempt >= c.cfg.MaxAttempts {
+			return c.toDLQ(ctx, parent, span, rec, err, attempt, dlqReasonExhausted)
 		}
 		select {
 		case <-parent.Done():
@@ -166,25 +178,34 @@ func (c *Consumer) process(parent context.Context, rec *kgo.Record) (bool, error
 	}
 }
 
-// toDLQ writes the DLQ record; a failure caused by shutdown is not an error and
-// leaves the record uncommitted (it will be redelivered).
-func (c *Consumer) toDLQ(ctx, parent context.Context, rec *kgo.Record, cause error, attempts int) (bool, error) {
+// Values of the smarthire.dlq.reason span attribute.
+const (
+	dlqReasonDecode    = "decode"
+	dlqReasonPermanent = "permanent"
+	dlqReasonExhausted = "exhausted"
+)
+
+// toDLQ records the failure on the process span and writes the DLQ record,
+// tagging the span smarthire.dlq=true once the write succeeded. A failure
+// caused by shutdown is not an error and leaves the record uncommitted (it
+// will be redelivered).
+func (c *Consumer) toDLQ(ctx, parent context.Context, span trace.Span, rec *kgo.Record, cause error, attempts int, reason string) (bool, error) {
+	span.RecordError(cause)
+	span.SetStatus(codes.Error, "dead-lettered: "+reason)
 	if err := c.dlq(ctx, rec, cause, attempts); err != nil {
 		if parent.Err() != nil {
 			return false, nil
 		}
+		span.RecordError(err)
 		return false, err
 	}
+	span.SetAttributes(attribute.Bool("smarthire.dlq", true), attribute.String("smarthire.dlq.reason", reason))
 	return true, nil
 }
 
 func (c *Consumer) dlq(ctx context.Context, rec *kgo.Record, cause error, attempts int) error {
-	hdrs := make([]kgo.RecordHeader, 0, len(rec.Headers)+5)
-	hdrs = append(hdrs, rec.Headers...)
-	for k, v := range dlqHeaders(rec, cause, attempts) {
-		hdrs = append(hdrs, kgo.RecordHeader{Key: k, Value: []byte(v)})
-	}
-	out := &kgo.Record{Topic: DLQTopic(rec.Topic), Key: rec.Key, Value: rec.Value, Headers: hdrs}
+	out := &kgo.Record{Topic: DLQTopic(rec.Topic), Key: rec.Key, Value: rec.Value,
+		Headers: dlqRecordHeaders(rec.Headers, rec, cause, attempts)}
 	if err := c.cl.ProduceSync(ctx, out).FirstErr(); err != nil {
 		return fmt.Errorf("dlq %s: %w", out.Topic, err)
 	}

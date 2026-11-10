@@ -18,8 +18,11 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/nuroqzavitex/smarthire/pkg/event"
@@ -182,6 +185,63 @@ func eventually(t *testing.T, cond func() bool, msg string) {
 	require.Eventually(t, cond, 20*time.Second, 50*time.Millisecond, msg)
 }
 
+// recordSpans installs a global tracer provider backed by a span recorder for
+// the duration of the test.
+func recordSpans(t *testing.T) *tracetest.SpanRecorder {
+	t.Helper()
+	rec := tracetest.NewSpanRecorder()
+	// SpanRecorder is a synchronous SpanProcessor (not an exporter, so no WithSyncer).
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(rec))
+	old := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(old)
+		_ = tp.Shutdown(context.Background())
+	})
+	return rec
+}
+
+func attr(s sdktrace.ReadOnlySpan, key attribute.Key) (attribute.Value, bool) {
+	for _, kv := range s.Attributes() {
+		if kv.Key == key {
+			return kv.Value, true
+		}
+	}
+	return attribute.Value{}, false
+}
+
+// dlqSpans waits until n ended "<topic> process" spans carry smarthire.dlq=true
+// and returns them.
+func dlqSpans(t *testing.T, rec *tracetest.SpanRecorder, topic string, n int) []sdktrace.ReadOnlySpan {
+	t.Helper()
+	var out []sdktrace.ReadOnlySpan
+	eventually(t, func() bool {
+		out = out[:0]
+		for _, s := range rec.Ended() {
+			if v, ok := attr(s, "smarthire.dlq"); ok && v.AsBool() && s.Name() == topic+" process" {
+				out = append(out, s)
+			}
+		}
+		return len(out) >= n
+	}, "dlq process spans ended")
+	return out
+}
+
+func assertDLQSpan(t *testing.T, s sdktrace.ReadOnlySpan, reason string) {
+	t.Helper()
+	assert.Equal(t, codes.Error, s.Status().Code)
+	v, ok := attr(s, "smarthire.dlq.reason")
+	require.True(t, ok, "smarthire.dlq.reason attribute")
+	assert.Equal(t, reason, v.AsString())
+	var hasErrEvent bool
+	for _, e := range s.Events() {
+		if e.Name == "exception" {
+			hasErrEvent = true
+		}
+	}
+	assert.True(t, hasErrEvent, "span.RecordError called")
+}
+
 func TestRoundTrip(t *testing.T) {
 	f := newFixture(t, true)
 	got := make(chan event.Envelope, 1)
@@ -254,6 +314,7 @@ func TestTransientErrorRetriedThenSucceeds(t *testing.T) {
 }
 
 func TestPermanentErrorGoesToDLQ(t *testing.T) {
+	sr := recordSpans(t)
 	f := newFixture(t, true)
 	var mu sync.Mutex
 	calls := 0
@@ -281,9 +342,11 @@ func TestPermanentErrorGoesToDLQ(t *testing.T) {
 	assert.Equal(t, 1, calls)
 	mu.Unlock()
 	eventually(t, func() bool { sum, ok := committed(t, f.group, f.topic); return ok && sum == 1 }, "offset committed after DLQ write")
+	assertDLQSpan(t, dlqSpans(t, sr, f.topic, 1)[0], "permanent")
 }
 
 func TestExhaustedRetriesGoToDLQ(t *testing.T) {
+	sr := recordSpans(t)
 	f := newFixture(t, true)
 	var mu sync.Mutex
 	calls := 0
@@ -301,9 +364,34 @@ func TestExhaustedRetriesGoToDLQ(t *testing.T) {
 	mu.Lock()
 	assert.Equal(t, 3, calls)
 	mu.Unlock()
+	assertDLQSpan(t, dlqSpans(t, sr, f.topic, 1)[0], "exhausted")
+}
+
+func TestRedeadLetteredRecordHasSingleDLQHeaderSet(t *testing.T) {
+	f := newFixture(t, true)
+	startConsumer(t, f, func(context.Context, event.Envelope, *kgo.Record) error {
+		return kafka.Permanent(fmt.Errorf("fresh failure"))
+	})
+	require.NoError(t, newProducer(t).Produce(context.Background(), kafka.Record{
+		Topic: f.topic, Key: []byte("k"), Value: mustEnv(t, 1),
+		Headers: map[string]string{"dlq-error": "old", "dlq-attempts": "9", "x": "1"},
+	}))
+	recs := readAll(t, f.dlq, 1)
+	require.Len(t, recs, 1)
+	counts := map[string]int{}
+	for _, h := range recs[0].Headers {
+		counts[h.Key]++
+	}
+	for _, k := range []string{"dlq-error", "dlq-attempts", "dlq-original-topic", "dlq-original-partition", "dlq-original-offset", "x"} {
+		assert.Equal(t, 1, counts[k], k)
+	}
+	assert.Equal(t, "fresh failure", header(recs[0], "dlq-error"))
+	assert.Equal(t, "1", header(recs[0], "dlq-attempts"))
+	assert.Equal(t, "1", header(recs[0], "x"))
 }
 
 func TestUndecodableGoesToDLQ(t *testing.T) {
+	sr := recordSpans(t)
 	f := newFixture(t, true)
 	var mu sync.Mutex
 	calls := 0
@@ -325,6 +413,9 @@ func TestUndecodableGoesToDLQ(t *testing.T) {
 	mu.Lock()
 	assert.Zero(t, calls)
 	mu.Unlock()
+	for _, s := range dlqSpans(t, sr, f.topic, 2) {
+		assertDLQSpan(t, s, "decode")
+	}
 }
 
 func TestOrderPerKey(t *testing.T) {

@@ -95,12 +95,25 @@ func (r *Relay) Run(ctx context.Context) error {
 	}
 }
 
+// finalizeTimeout bounds marking published rows and ending the transaction.
+// Finalization is detached from the Run ctx so a shutdown in the middle of a
+// batch still records the rows already sent (avoiding duplicate publishes).
+const finalizeTimeout = 5 * time.Second
+
+func finalizeCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), finalizeTimeout)
+}
+
 func (r *Relay) tick(ctx context.Context) (int, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("begin: %w", err)
 	}
-	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }() // no-op after Commit
+	defer func() { // no-op after Commit
+		rctx, cancel := finalizeCtx(ctx)
+		defer cancel()
+		_ = tx.Rollback(rctx)
+	}()
 
 	rows, err := selectPending(ctx, tx, r.opts.BatchSize)
 	if err != nil {
@@ -111,15 +124,18 @@ func (r *Relay) tick(ctx context.Context) (int, error) {
 	for _, rw := range rows {
 		pctx, rec := recordFromRow(ctx, rw)
 		if pubErr = r.pub.Produce(pctx, rec); pubErr != nil {
+			r.opts.Logger.WarnContext(ctx, "outbox publish failed", "event_type", rw.EventType, "outbox_id", rw.ID, "error", pubErr)
 			break
 		}
 		sent = append(sent, rw.ID)
 	}
 	if len(sent) > 0 {
-		if _, err := tx.Exec(ctx, `UPDATE outbox SET published_at = now() WHERE id = ANY($1)`, sent); err != nil {
+		fctx, cancel := finalizeCtx(ctx)
+		defer cancel()
+		if _, err := tx.Exec(fctx, `UPDATE outbox SET published_at = now() WHERE id = ANY($1)`, sent); err != nil {
 			return len(rows), errors.Join(pubErr, fmt.Errorf("mark published: %w", err))
 		}
-		if err := tx.Commit(ctx); err != nil {
+		if err := tx.Commit(fctx); err != nil {
 			return len(rows), errors.Join(pubErr, fmt.Errorf("commit: %w", err))
 		}
 	}

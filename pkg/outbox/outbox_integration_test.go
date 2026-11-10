@@ -261,6 +261,49 @@ func TestRelay_MidBatchFailureRetriesRest(t *testing.T) {
 	assert.Len(t, readAll(t, f.topic, 6, 3*time.Second), 5)
 }
 
+// cancelAfter publishes through inner and cancels the relay's ctx right after
+// the okN-th successful publish; later calls fail with ctx.Err().
+type cancelAfter struct {
+	inner  outbox.Publisher
+	okN    int
+	ok     int
+	cancel context.CancelFunc
+}
+
+func (c *cancelAfter) Produce(ctx context.Context, r kafka.Record) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := c.inner.Produce(ctx, r); err != nil {
+		return err
+	}
+	c.ok++
+	if c.ok == c.okN {
+		c.cancel()
+	}
+	return nil
+}
+
+func TestRelay_MarksSentRowsWhenCancelledMidBatch(t *testing.T) {
+	f := newFixture(t)
+	write(t, context.Background(), f, 5)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pub := &cancelAfter{inner: newProducer(t), okN: 2, cancel: cancel}
+	r := outbox.NewRelay(pool, pub, quiet())
+
+	n, err := r.Tick(ctx)
+	assert.Equal(t, 5, n)
+	require.ErrorIs(t, err, context.Canceled)
+
+	var marked int
+	require.NoError(t, pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM outbox WHERE published_at IS NOT NULL").Scan(&marked))
+	assert.Equal(t, 2, marked, "rows sent before cancel are marked")
+	assert.Equal(t, 3, pending(t))
+	assert.Len(t, readAll(t, f.topic, 3, 3*time.Second), 2)
+}
+
 func TestRelay_FullBatchContinuesImmediately(t *testing.T) {
 	f := newFixture(t)
 	write(t, context.Background(), f, 25)

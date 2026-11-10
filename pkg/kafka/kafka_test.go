@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/twmb/franz-go/pkg/kgo"
+
+	"github.com/nuroqzavitex/smarthire/pkg/event"
 )
 
 func TestBackoff(t *testing.T) {
@@ -38,3 +41,37 @@ func TestDLQHeaders_TruncatesError(t *testing.T) {
 }
 
 func TestDLQTopic(t *testing.T) { assert.Equal(t, "a.dlq", DLQTopic("a")) }
+
+func TestNewConsumer_ValidatesConfig(t *testing.T) {
+	h := func(context.Context, event.Envelope, *kgo.Record) error { return nil }
+	for name, cfg := range map[string]ConsumerConfig{
+		"brokers": {Group: "g", Topics: []string{"t"}, Handler: h},
+		"group":   {Brokers: []string{"b:1"}, Topics: []string{"t"}, Handler: h},
+		"topics":  {Brokers: []string{"b:1"}, Group: "g", Handler: h},
+	} {
+		_, err := NewConsumer(cfg)
+		assert.ErrorContains(t, err, "empty "+name, name)
+	}
+}
+
+func TestDLQRecordHeaders_ReplacesOldDLQHeaders(t *testing.T) {
+	orig := []kgo.RecordHeader{
+		{Key: "traceparent", Value: []byte("tp")},
+		{Key: "dlq-error", Value: []byte("old")},
+		{Key: "dlq-attempts", Value: []byte("9")},
+		{Key: "x", Value: []byte("1")},
+	}
+	got := dlqRecordHeaders(orig, &kgo.Record{Topic: "cv.parsed", Partition: 1, Offset: 4}, errors.New("new"), 2)
+	want := []kgo.RecordHeader{
+		{Key: "traceparent", Value: []byte("tp")},
+		{Key: "x", Value: []byte("1")},
+		{Key: "dlq-attempts", Value: []byte("2")},
+		{Key: "dlq-error", Value: []byte("new")},
+		{Key: "dlq-original-offset", Value: []byte("4")},
+		{Key: "dlq-original-partition", Value: []byte("1")},
+		{Key: "dlq-original-topic", Value: []byte("cv.parsed")},
+	}
+	assert.Equal(t, want, got, "exactly one dlq-error/dlq-attempts, originals first, 7 headers")
+	assert.Len(t, orig, 4, "input slice untouched")
+	assert.Equal(t, "dlq-error", orig[1].Key)
+}

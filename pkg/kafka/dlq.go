@@ -2,9 +2,29 @@ package kafka
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 )
+
+// dlqHeaderKeys is the fixed order in which dlq-* headers are appended.
+var dlqHeaderKeys = []string{"dlq-attempts", "dlq-error", "dlq-original-offset", "dlq-original-partition", "dlq-original-topic"}
+
+// dlqRecordHeaders returns orig (order kept) without any dlq-* header, followed
+// by a fresh dlq-* set, so a re-dead-lettered record carries one set only.
+func dlqRecordHeaders(orig []kgo.RecordHeader, rec *kgo.Record, cause error, attempts int) []kgo.RecordHeader {
+	out := make([]kgo.RecordHeader, 0, len(orig)+len(dlqHeaderKeys))
+	for _, h := range orig {
+		if !strings.HasPrefix(h.Key, "dlq-") {
+			out = append(out, h)
+		}
+	}
+	m := dlqHeaders(rec, cause, attempts)
+	for _, k := range dlqHeaderKeys {
+		out = append(out, kgo.RecordHeader{Key: k, Value: []byte(m[k])})
+	}
+	return out
+}
 
 const maxDLQErrorRunes = 512
 
