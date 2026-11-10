@@ -1,5 +1,5 @@
 .PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job \
-	infra-up obs-up up down down-v migrate seed smoke logs
+	minio-image infra-up obs-up up down down-v migrate seed smoke logs
 
 # Compose stack (deploy/docker), project name smarthire. Paths are absolute
 # and MSYS_NO_PATHCONV stops Git Bash on Windows from rewriting them.
@@ -63,9 +63,15 @@ cover-job:
 	cd services/job && go test -coverprofile=coverage.out ./internal/domain/... ./internal/app/... && \
 		go tool cover -func=coverage.out | awk '/^total:/ { sub("%","",$$3); printf "total coverage: %s%%\n", $$3; if ($$3+0 < 70) { print "coverage below 70%"; exit 1 } }'
 
-infra-up:
-	$(COMPOSE) up -d --wait postgres redis redpanda redpanda-console
-	$(COMPOSE) run --rm topics-init
+# MinIO server + mc built from the official GitHub source at pinned release
+# tags (E-R2, ADR 0008) as smarthire/minio:RELEASE.2025-04-22T22-12-26Z;
+# compose and testcontainers use this local image.
+minio-image:
+	$(COMPOSE) build minio
+
+infra-up: minio-image
+	$(COMPOSE) up -d --wait postgres redis redpanda redpanda-console minio
+	$(COMPOSE) run --rm topics-init && $(COMPOSE) run --rm minio-init
 
 obs-up:
 	$(COMPOSE) up -d otel-collector tempo grafana
@@ -91,7 +97,7 @@ up:
 down:
 	$(COMPOSE) --profile tools down
 
-# Removes the project's volumes (Postgres, Redis, Redpanda data). The compose
+# Removes the project's volumes (Postgres, Redis, Redpanda, MinIO data). The compose
 # project "smarthire" is shared across git worktrees, so this wipes them all.
 down-v:
 	$(COMPOSE) --profile tools down -v
