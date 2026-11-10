@@ -7,7 +7,7 @@ Service Go sở hữu danh tính người dùng: đăng ký, đăng nhập, cấ
 - gRPC `smarthire.auth.v1.AuthService`: `Register`, `Login`, `Refresh`, `Logout`, `GetMe`. `Register` và `Login` là RPC public; `Refresh` và `Logout` cũng public (xác thực bằng refresh token); `GetMe` cần access token hợp lệ (interceptor `pkg/grpcx` tự verify lại bằng JWKS, xem [ADR 0003](../../docs/adr/0003-jwt-verify-at-service.md)).
 - Access token: RS256, TTL 15 phút, `iss=smarthire-auth`, `aud=smarthire-api`, header `kid`. Refresh token: 32 byte ngẫu nhiên base64url, DB chỉ lưu `sha256`, TTL 7 ngày (xem [ADR 0004](../../docs/adr/0004-refresh-token-rotation.md)).
 - Mật khẩu hash bằng argon2id (tham số cấu hình được). Admin không đăng ký được qua API; tạo bằng `make seed`.
-- Ghi sự kiện `user.registered` vào bảng `outbox` trong cùng transaction với việc tạo user. Relay sang Kafka là việc của M1.
+- Ghi sự kiện `user.registered` vào bảng `outbox` trong cùng transaction với việc tạo user. Relay outbox (`pkg/outbox`, có từ M1a) đẩy sự kiện lên topic Kafka `user.registered`, key = `user_id` (xem [ADR 0005](../../docs/adr/0005-outbox-relay-headers.md)).
 - Không log PII (email, mật khẩu, token); `user_id` được phép.
 
 ## Cổng
@@ -34,6 +34,8 @@ Prefix `AUTH_`. Config chỉ đọc qua env (`github.com/caarlos0/env/v11`); bi�
 | `AUTH_JWT_AUDIENCE` | `smarthire-api` | không | Claim `aud` |
 | `AUTH_ACCESS_TTL` | `15m` | không | TTL access token |
 | `AUTH_REFRESH_TTL` | `168h` | không | TTL refresh token (7 ngày) |
+| `AUTH_KAFKA_BROKERS` | `redpanda:9092` | không | Danh sách broker Kafka, phân tách bằng dấu phẩy (relay outbox) |
+| `AUTH_OUTBOX_INTERVAL` | `500ms` | không | Chu kỳ quét bảng `outbox` của relay |
 | `AUTH_JWKS_URL` | `http://localhost:8001/.well-known/jwks.json` | không | URL JWKS mà interceptor của chính Auth dùng để verify lại token |
 | `AUTH_ARGON2_MEMORY_KIB` | `19456` | không | Bộ nhớ argon2id (KiB) |
 | `AUTH_ARGON2_ITERATIONS` | `2` | không | Số vòng argon2id |

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -23,7 +22,6 @@ func waitForKey(ctx context.Context, broker, topic, key string) error {
 		kgo.SeedBrokers(broker),
 		kgo.ConsumeTopics(topic),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
-		kgo.Dialer(loopbackDialer),
 	)
 	if err != nil {
 		return fmt.Errorf("kafka client: %w", err)
@@ -54,15 +52,4 @@ func waitForKey(ctx context.Context, broker, topic, key string) error {
 			return nil
 		}
 	}
-}
-
-// loopbackDialer dials the broker's advertised dev address (localhost:19092)
-// over IPv4: the port is published on 127.0.0.1 only, and localhost may
-// resolve to ::1 first.
-func loopbackDialer(ctx context.Context, network, host string) (net.Conn, error) {
-	if h, p, err := net.SplitHostPort(host); err == nil && h == "localhost" {
-		host = net.JoinHostPort("127.0.0.1", p)
-	}
-	var d net.Dialer
-	return d.DialContext(ctx, network, host)
 }

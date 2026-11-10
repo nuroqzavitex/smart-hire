@@ -20,10 +20,13 @@ var errReuseDetected = errors.New("refresh token reuse")
 // Refresh rotates a refresh token within its family. Rotation runs on the
 // request ctx, so a cancelled client rolls it back and the old token stays
 // valid. Presenting an already revoked token is treated as theft: the
-// rotation transaction rolls back and the whole family is then revoked in a
-// separate transaction on a detached ctx bounded by reuseRevokeTimeout, so a
-// client disconnect cannot skip the revocation. The call still fails with
-// ErrInvalidRefreshToken.
+// rotation transaction rolls back (errReuseDetected), the reuse warning is
+// logged, and the whole family is then revoked in a separate transaction on
+// a detached ctx bounded by reuseRevokeTimeout, so a client disconnect cannot
+// skip the revocation. The call then fails with ErrInvalidRefreshToken. If
+// the revocation fails it is logged at Error and returned as an internal
+// error. A ctx that is already cancelled before the first transaction never
+// reads the token, so reuse is not detected (accepted).
 func (s *Service) Refresh(ctx context.Context, raw string) (TokenPair, error) {
 	var pair TokenPair
 	var famID, userID uuid.UUID

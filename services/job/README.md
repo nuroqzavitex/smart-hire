@@ -39,3 +39,10 @@ Job postings (JD) for recruiters: create, edit, publish, close, soft-delete, and
 ## Events (outbox, relayed to Kafka)
 
 `job.created`, `job.updated`, `job.closed`, `job.deleted` (source `job-service`, key = `job_id`).
+
+## Notes
+
+- **Status codes:** `CreateJob` returns HTTP 201 through the gateway, although the generated OpenAPI (`contracts/openapi/gateway.yaml`) documents 200 (`openapimerge` cannot override generated responses).
+- **`unaccent` and reindexing:** the full-text column `search_vector` is generated through `unaccent_immutable(text)`, an `IMMUTABLE` wrapper around `unaccent` with a fixed dictionary. If the `unaccent` rules change (extension upgrade or edited rules file), stored values are not recomputed: rewrite the column and `REINDEX` the dependent indexes.
+- **Dev volumes:** `job_db` and the `job_svc` role exist only on a freshly initialised Postgres volume; older dev volumes need `make down-v` plus `JOB_DB_PASSWORD` in `.env` (see the root README).
+- Events and relay behaviour: [ADR 0005](../../docs/adr/0005-outbox-relay-headers.md), [ADR 0006](../../docs/adr/0006-kafka-client-retry-dlq.md). Coverage: `make cover-job` (threshold 70%).

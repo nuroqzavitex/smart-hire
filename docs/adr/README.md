@@ -12,6 +12,8 @@ Mỗi ADR ghi một quyết định kiến trúc theo khuôn: **Context / Decisi
 | [0002](0002-gateway-hybrid.md) | Gateway hybrid chi + grpc-gateway | M0 |
 | [0003](0003-jwt-verify-at-service.md) | Verify JWT ở cả Gateway và service | M0 |
 | [0004](0004-refresh-token-rotation.md) | Refresh token rotation + phát hiện dùng lại | M0 |
+| [0005](0005-outbox-relay-headers.md) | Outbox relay trong process + cột `headers` | M1a |
+| [0006](0006-kafka-client-retry-dlq.md) | Kafka client (franz-go) + retry in-process + DLQ | M1a |
 
 ## Chủ đề dự kiến (chưa có số)
 

@@ -1,6 +1,6 @@
-// Command smoke drives the full auth flow (M0 design spec §6.3) and the job
-// flow (M1a design spec §7) through a running gateway, and exits non-zero on
-// the first failing step.
+// Command smoke drives the full auth flow (M0 design spec §6.3, plus a check
+// that user.registered reaches Kafka) and the job flow (M1a design spec §7)
+// through a running gateway, and exits non-zero on the first failing step.
 //
 // Cookies are sent by hand instead of through a cookiejar so that an old
 // refresh token can be replayed to exercise reuse detection.
@@ -8,6 +8,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -34,6 +35,7 @@ type smoke struct {
 	kafka  string
 	client *http.Client
 	email  string
+	userID string
 
 	recruiterEmail    string
 	recruiterPassword string
@@ -91,6 +93,9 @@ func (s *smoke) run() error {
 	var access, rt1, rt2 string
 	steps := []namedStep{
 		{"register", s.register},
+		{"user.registered on kafka", func() error {
+			return waitForKey(context.Background(), s.kafka, "user.registered", s.userID)
+		}},
 		{"login", func() (err error) { access, rt1, err = s.login(); return err }},
 		{"me", func() error { return s.me(access) }},
 		{"refresh", func() (err error) { rt2, err = s.refreshOK(rt1); return err }},
@@ -177,6 +182,7 @@ func (s *smoke) register() error {
 	if err := json.Unmarshal(r.body, &out); err != nil || out.UserID == "" {
 		return fmt.Errorf("no user_id in body: %s", r.body)
 	}
+	s.userID = out.UserID
 	return nil
 }
 

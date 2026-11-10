@@ -271,7 +271,7 @@ git commit -m "fix(auth): bind refresh rotation to request ctx and bound reuse r
       - --smp=1
       - --memory=1G
       - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
-      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://127.0.0.1:19092
     ports:
       - "127.0.0.1:19092:19092"   # D9: chỉ cho dev/smoke
     volumes: [redpanda-data:/var/lib/redpanda/data]
@@ -1164,7 +1164,7 @@ Expected: 7 + 7 dòng `PASS`, exit 0. Mở `http://localhost:8081` thấy messag
 - 0005: relay goroutine trong `cmd/server` (D3), poll `FOR UPDATE SKIP LOCKED`, at-least-once, thứ tự theo key trong một replica; cột `headers jsonb` lưu carrier W3C (D4) và cách relay nối span (quyết định #2); khi nào tách `cmd/relay`; CDC (Debezium) là phương án bị loại.
 - 0006: Redpanda cho local (D1), franz-go (D2), idempotent producer `acks=all`; retry trong process 3 lần backoff 200ms×2^n ≤ 2s rồi `<topic>.dlq` với header `dlq-*` (D5), `kafka.Permanent`, DLQ lỗi thì dừng consumer; phương án topic retry trễ để sau; `pkg/idempotency` cho consumer có side effect DB.
 
-- [ ] **Step 2: README** — sơ đồ: tô xanh thêm Job Service, `job_db`, Kafka; đoạn "Ở M0, Auth chỉ ghi..." thay bằng mô tả relay; Quick start ghi smoke có luồng recruiter và volume cũ cần `down -v` để tạo `job_svc`; bảng URL thêm Redpanda Console `http://localhost:8081`, Kafka dev `localhost:19092`, Job gRPC/HTTP `9002/8002` (chỉ nội bộ); Roadmap tách dòng M1 thành `M1a` ✅ và `M1b` (Candidate + AI parse) chưa bắt đầu; mục Tài liệu thêm `services/job`, ADR 0005/0006, design + plan M1a. `docs/adr/README.md` thêm 2 dòng.
+- [ ] **Step 2: README** — sơ đồ: tô xanh thêm Job Service, `job_db`, Kafka; đoạn "Ở M0, Auth chỉ ghi..." thay bằng mô tả relay; Quick start ghi smoke có luồng recruiter và volume cũ cần `down -v` để tạo `job_svc`; bảng URL thêm Redpanda Console `http://localhost:8081`, Kafka dev `127.0.0.1:19092`, Job gRPC/HTTP `9002/8002` (chỉ nội bộ); Roadmap tách dòng M1 thành `M1a` ✅ và `M1b` (Candidate + AI parse) chưa bắt đầu; mục Tài liệu thêm `services/job`, ADR 0005/0006, design + plan M1a. `docs/adr/README.md` thêm 2 dòng.
 
 - [ ] **Step 3: CLAUDE.md** — Project state: M1a đã có (`pkg/kafka`, `pkg/outbox`, `pkg/idempotency`, `pkg/event/eventschema`, `services/job`, `contracts/events`), thêm design/plan M1a vào danh sách tài liệu; Architecture/Events: relay đã chạy, headers W3C, DLQ; Commands thêm `make cover-job`, lệnh race thêm `services/job`, URL thêm Console `:8081` và Kafka `:19092`; Conventions: config prefix `JOB_`, ADR M1a dùng 0005–0006.
 

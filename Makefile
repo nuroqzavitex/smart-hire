@@ -1,5 +1,5 @@
 .PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job \
-	infra-up obs-up up down migrate seed smoke logs
+	infra-up obs-up up down down-v migrate seed smoke logs
 
 # Compose stack (deploy/docker), project name smarthire. Paths are absolute
 # and MSYS_NO_PATHCONV stops Git Bash on Windows from rewriting them.
@@ -90,6 +90,11 @@ up:
 
 down:
 	$(COMPOSE) --profile tools down
+
+# Removes the project's volumes (Postgres, Redis, Redpanda data). The compose
+# project "smarthire" is shared across git worktrees, so this wipes them all.
+down-v:
+	$(COMPOSE) --profile tools down -v
 
 # Re-runs the auth and job migrations (the one-shot *-migrate containers).
 migrate:

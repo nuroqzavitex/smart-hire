@@ -1,6 +1,6 @@
 # ADR 0004: Refresh token rotation + phát hiện dùng lại
 
-- Trạng thái: Chấp nhận (M0)
+- Trạng thái: Chấp nhận (M0), sửa đổi ở M1a (R26)
 - Ngày: 2026-11-08
 
 ## Context
@@ -49,6 +49,17 @@ Tích cực:
 - Mạng chập chờn có thể gây "dùng lại" thật: client gửi refresh, server xoay xong nhưng phản hồi mất, client thử lại bằng token cũ và bị đăng xuất cả family. Chưa có cửa sổ ân hạn (grace window).
 - Mỗi lần refresh ghi DB và giữ khoá hàng; chấp nhận được ở quy mô này.
 - Hàng token cũ tích luỹ trong `refresh_tokens`; cần job dọn dẹp (ngoài phạm vi M0).
+
+## Sửa đổi ở M1a (R26), 2026-11-10
+
+Cơ chế "closure trả nil để việc thu hồi family commit" ở trên đã được thay (`services/auth/internal/app/refresh.go`):
+
+- Nhánh dùng lại trả lỗi nội bộ `errReuseDetected`, nên transaction xoay **rollback** (chưa ghi gì).
+- Sau đó log cảnh báo `event=refresh_token_reuse` (`user_id`, `family_id`) **trước** khi thu hồi, rồi thu hồi cả family trong **transaction thứ hai** chạy trên `context.WithTimeout(context.WithoutCancel(ctx), 5s)`: client ngắt kết nối không huỷ được việc thu hồi, nhưng nó vẫn có giới hạn thời gian. Thành công thì trả `Unauthenticated` như trước.
+- Thu hồi lỗi thì log mức Error (`event=refresh_token_reuse_revoke_failed`) và trả lỗi (→ gRPC `Internal`, HTTP 500), không giả vờ là đã thu hồi.
+- Nếu `ctx` đã bị huỷ trước transaction đầu thì token không được đọc nên không phát hiện dùng lại; chấp nhận vì request đó cũng không xoay được token.
+
+**Race đã biết (READ COMMITTED):** `RevokeFamily` chỉ thấy các token đã commit lúc nó chạy. Một lần xoay đồng thời của token **còn sống** trong family (đang giữ khoá dòng của token đó, chưa commit) có thể tạo token mới sau khi `RevokeFamily` đã quét, và token mới đó thoát khỏi việc thu hồi. Hướng sửa sau này: khoá theo family (ví dụ `pg_advisory_xact_lock` trên `family_id`, hoặc một hàng `refresh_families` được `SELECT ... FOR UPDATE`) ở cả nhánh xoay và nhánh thu hồi.
 
 ## Alternatives considered
 
