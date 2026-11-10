@@ -38,7 +38,9 @@ lint:
 	done
 
 sqlc:
-	MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR)/services/auth:/src" -w /src sqlc/sqlc:1.29.0 generate
+	@for s in auth job; do \
+		MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR)/services/$$s:/src" -w /src sqlc/sqlc:1.29.0 generate || exit 1; \
+	done
 
 test:
 	@for d in $$(go list -f '{{.Dir}}' -m); do \

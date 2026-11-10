@@ -46,28 +46,6 @@ func parseLevel(s string) slog.Level {
 	return l
 }
 
-// newVerifier retries while the auth service (JWKS endpoint) is starting.
-func newVerifier(ctx context.Context, cfg config.Config, log *slog.Logger) (*authz.Verifier, error) {
-	deadline := time.Now().Add(verifierRetry)
-	for {
-		fctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		v, err := authz.NewVerifier(fctx, cfg.AuthJWKSURL, cfg.JWTIssuer, cfg.JWTAudience)
-		cancel()
-		if err == nil {
-			return v, nil
-		}
-		if time.Now().After(deadline) || ctx.Err() != nil {
-			return nil, fmt.Errorf("jwks verifier: %w", err)
-		}
-		log.Warn("auth JWKS not available yet, retrying", "error", err)
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-}
-
 func run() error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -95,7 +73,7 @@ func run() error {
 	}
 	defer func() { _ = conn.Close() }()
 
-	verifier, err := newVerifier(ctx, cfg, log)
+	verifier, err := authz.NewVerifierWithRetry(ctx, cfg.AuthJWKSURL, cfg.JWTIssuer, cfg.JWTAudience, verifierRetry, log)
 	if err != nil {
 		return err
 	}
