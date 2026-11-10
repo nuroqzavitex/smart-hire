@@ -1,4 +1,4 @@
-.PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth \
+.PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job \
 	infra-up obs-up up down migrate seed smoke logs
 
 # Compose stack (deploy/docker), project name smarthire. Paths are absolute
@@ -11,6 +11,9 @@ COMPOSE := MSYS_NO_PATHCONV=1 docker compose -p smarthire \
 	-f $(COMPOSE_DIR)/docker-compose.yml
 GATEWAY_URL ?= http://localhost:8080
 SMOKE_ORIGIN ?= http://localhost:3001
+# Redpanda dev listener; an IPv4 literal because the port is published on
+# 127.0.0.1 only and localhost may resolve to ::1.
+KAFKA_ADDR ?= 127.0.0.1:19092
 
 bootstrap:
 	go install github.com/bufbuild/buf/cmd/buf@v1.75.0
@@ -48,12 +51,16 @@ test:
 	done
 
 test-int:
-	@for d in services/*/; do \
+	@for d in pkg services/*/; do \
 		echo "go test -tags integration $$d"; (cd $$d && go test -count=1 -tags integration ./...) || exit 1; \
 	done
 
 cover-auth:
 	cd services/auth && go test -coverprofile=coverage.out ./internal/domain/... ./internal/app/... && \
+		go tool cover -func=coverage.out | awk '/^total:/ { sub("%","",$$3); printf "total coverage: %s%%\n", $$3; if ($$3+0 < 70) { print "coverage below 70%"; exit 1 } }'
+
+cover-job:
+	cd services/job && go test -coverprofile=coverage.out ./internal/domain/... ./internal/app/... && \
 		go tool cover -func=coverage.out | awk '/^total:/ { sub("%","",$$3); printf "total coverage: %s%%\n", $$3; if ($$3+0 < 70) { print "coverage below 70%"; exit 1 } }'
 
 infra-up:
@@ -64,7 +71,8 @@ obs-up:
 	$(COMPOSE) up -d otel-collector tempo grafana
 
 # Builds and starts everything, then waits until the gateway listens (it only
-# starts serving once it has fetched the auth JWKS).
+# starts serving once it has fetched the auth JWKS) and until a job RPC
+# succeeds through it (job's /readyz answers before its gRPC server listens).
 up:
 	$(COMPOSE) up -d --build
 	@echo "waiting for gateway at $(GATEWAY_URL)"; \
@@ -73,19 +81,25 @@ up:
 		sleep 1; \
 	done; \
 	echo "gateway did not become healthy"; $(COMPOSE) logs --tail=50 auth gateway; exit 1
+	@echo "waiting for job service at $(GATEWAY_URL)/v1/jobs"; \
+	for i in $$(seq 1 60); do \
+		curl -fsS -o /dev/null $(GATEWAY_URL)/v1/jobs && { echo "job service is up"; exit 0; }; \
+		sleep 1; \
+	done; \
+	echo "job service did not become reachable"; $(COMPOSE) logs --tail=50 job gateway; exit 1
 
 down:
 	$(COMPOSE) --profile tools down
 
-# Re-runs the auth migrations (the one-shot auth-migrate container).
+# Re-runs the auth and job migrations (the one-shot *-migrate containers).
 migrate:
-	$(COMPOSE) run --rm auth-migrate
+	$(COMPOSE) run --rm auth-migrate && $(COMPOSE) run --rm job-migrate
 
 seed:
 	$(COMPOSE) run --rm auth-seed
 
 smoke:
-	go run ./tools/cmd/smoke -base $(GATEWAY_URL) -origin $(SMOKE_ORIGIN)
+	go run ./tools/cmd/smoke -base $(GATEWAY_URL) -origin $(SMOKE_ORIGIN) -kafka $(KAFKA_ADDR)
 
 logs:
 	$(COMPOSE) logs -f --tail=100

@@ -1,5 +1,6 @@
-// Command smoke drives the full auth flow through a running gateway
-// (design spec §6.3) and exits non-zero on the first failing step.
+// Command smoke drives the full auth flow (M0 design spec §6.3) and the job
+// flow (M1a design spec §7) through a running gateway, and exits non-zero on
+// the first failing step.
 //
 // Cookies are sent by hand instead of through a cookiejar so that an old
 // refresh token can be replayed to exercise reuse detection.
@@ -30,8 +31,17 @@ const (
 type smoke struct {
 	base   string
 	origin string
+	kafka  string
 	client *http.Client
 	email  string
+
+	recruiterEmail    string
+	recruiterPassword string
+}
+
+type namedStep struct {
+	name string
+	fn   func() error
 }
 
 type response struct {
@@ -43,11 +53,17 @@ type response struct {
 func main() {
 	base := flag.String("base", "http://localhost:8080", "gateway base URL")
 	origin := flag.String("origin", "http://localhost:3001", "allowed Origin sent on cookie routes")
+	kafka := flag.String("kafka", "127.0.0.1:19092", "Kafka (Redpanda) dev listener")
+	recruiterEmail := flag.String("recruiter-email", "recruiter@smarthire.local", "seeded recruiter email")
+	recruiterPassword := flag.String("recruiter-password", "Password123!", "seeded recruiter password")
 	flag.Parse()
 
 	s := &smoke{
-		base:   strings.TrimRight(*base, "/"),
-		origin: *origin,
+		base:              strings.TrimRight(*base, "/"),
+		origin:            *origin,
+		kafka:             *kafka,
+		recruiterEmail:    *recruiterEmail,
+		recruiterPassword: *recruiterPassword,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -73,10 +89,7 @@ func step(name string, fn func() error) error {
 
 func (s *smoke) run() error {
 	var access, rt1, rt2 string
-	steps := []struct {
-		name string
-		fn   func() error
-	}{
+	steps := []namedStep{
 		{"register", s.register},
 		{"login", func() (err error) { access, rt1, err = s.login(); return err }},
 		{"me", func() error { return s.me(access) }},
@@ -85,6 +98,7 @@ func (s *smoke) run() error {
 		{"refresh RT2 after family revoked", func() error { return s.refreshDenied(rt2) }},
 		{"login logout refresh", s.loginLogoutRefresh},
 	}
+	steps = append(steps, s.jobSteps()...)
 	for _, st := range steps {
 		if err := step(st.name, st.fn); err != nil {
 			return err
@@ -166,10 +180,16 @@ func (s *smoke) register() error {
 	return nil
 }
 
-// login returns the access token and the refresh token from the sh_rt cookie.
+// login logs the smoke user in and returns the access token and the refresh
+// token from the sh_rt cookie.
 func (s *smoke) login() (string, string, error) {
+	return s.loginAs(s.email, smokePassword)
+}
+
+// loginAs returns the access token and the refresh token from the sh_rt cookie.
+func (s *smoke) loginAs(email, password string) (string, string, error) {
 	r, err := s.do(http.MethodPost, "/v1/auth/login",
-		map[string]string{"email": s.email, "password": smokePassword}, nil)
+		map[string]string{"email": email, "password": password}, nil)
 	if err != nil {
 		return "", "", err
 	}

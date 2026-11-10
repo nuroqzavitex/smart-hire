@@ -17,11 +17,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
 	authv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/auth/v1"
+	jobv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
 	"github.com/nuroqzavitex/smarthire/pkg/authz/authztest"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
@@ -100,9 +102,55 @@ func (allowAll) ScriptLoad(ctx context.Context, _ string) *redis.StringCmd {
 	return redis.NewStringCmd(ctx)
 }
 
+type fakeJob struct {
+	jobv1.UnimplementedJobServiceServer
+	mu          sync.Mutex
+	createCalls int
+	getReq      *jobv1.GetJobRequest
+	listReq     *jobv1.ListJobsRequest
+	publishReq  *jobv1.PublishJobRequest
+	myCalls     int
+}
+
+func (f *fakeJob) CreateJob(context.Context, *jobv1.CreateJobRequest) (*jobv1.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.createCalls++
+	return &jobv1.Job{Id: "j-1", Status: jobv1.JobStatus_JOB_STATUS_DRAFT}, nil
+}
+
+func (f *fakeJob) GetJob(_ context.Context, r *jobv1.GetJobRequest) (*jobv1.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.getReq = r
+	return &jobv1.Job{Id: r.Id, Status: jobv1.JobStatus_JOB_STATUS_OPEN}, nil
+}
+
+func (f *fakeJob) ListJobs(_ context.Context, r *jobv1.ListJobsRequest) (*jobv1.ListJobsResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.listReq = r
+	return &jobv1.ListJobsResponse{}, nil
+}
+
+func (f *fakeJob) PublishJob(_ context.Context, r *jobv1.PublishJobRequest) (*jobv1.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.publishReq = r
+	return &jobv1.Job{Id: r.Id, Status: jobv1.JobStatus_JOB_STATUS_OPEN}, nil
+}
+
+func (f *fakeJob) ListMyJobs(context.Context, *jobv1.ListMyJobsRequest) (*jobv1.ListJobsResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.myCalls++
+	return &jobv1.ListJobsResponse{}, nil
+}
+
 type env struct {
 	h    http.Handler
 	fake *fakeAuth
+	job  *fakeJob
 	is   *authztest.KeyIssuer
 }
 
@@ -125,9 +173,23 @@ func setup(t *testing.T) *env {
 	require.NoError(t, err)
 	t.Cleanup(v.Close)
 
+	fj := &fakeJob{}
+	jlis := bufconn.Listen(1 << 20)
+	jsrv, _ := grpcx.NewServer(grpcx.ServerConfig{Verifier: v, PublicMethods: []string{
+		jobv1.JobService_GetJob_FullMethodName, jobv1.JobService_ListJobs_FullMethodName,
+	}})
+	jobv1.RegisterJobServiceServer(jsrv, fj)
+	go func() { _ = jsrv.Serve(jlis) }()
+	t.Cleanup(jsrv.Stop)
+	jconn, err := grpcx.Dial("passthrough:///jobbufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return jlis.Dial() }))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = jconn.Close() })
+
 	h, err := router.New(t.Context(), router.Deps{
 		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		AuthConn: conn,
+		JobConn:  jconn,
 		Verifier: v,
 		Limiter:  ratelimit.New(allowAll{}),
 		Cfg: config.Config{
@@ -137,7 +199,7 @@ func setup(t *testing.T) *env {
 		Ready: func(context.Context) error { return nil },
 	})
 	require.NoError(t, err)
-	return &env{h: h, fake: fake, is: is}
+	return &env{h: h, fake: fake, job: fj, is: is}
 }
 
 func (e *env) do(method, path, body string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -280,4 +342,85 @@ func TestRouter_GRPCMetadataNotForwarded(t *testing.T) {
 		assert.NotContains(t, strings.ToLower(k), "grpc-metadata", k)
 		assert.NotContains(t, strings.ToLower(k), "grpc-trailer", k)
 	}
+}
+
+const jobID = "0b0e1c1e-6f0a-4a43-9d0a-3f3c0d6f3a11"
+
+func TestRouter_ListJobsAnonymous200(t *testing.T) {
+	e := setup(t)
+	rec := e.do("GET", "/v1/jobs?q=go&skills=go&skills=sql&page_size=5", "", nil)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	assert.Equal(t, []string{"go", "sql"}, e.job.listReq.Skills)
+	assert.Equal(t, int32(5), e.job.listReq.PageSize)
+}
+
+func TestRouter_GetJobAnonymous200(t *testing.T) {
+	e := setup(t)
+	rec := e.do("GET", "/v1/jobs/"+jobID, "", nil)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	assert.Equal(t, jobID, e.job.getReq.Id)
+}
+
+const createJobBody = `{"title":"Backend Go","description":"Build backend services in Go","required_skills":["go"],"level":"JOB_LEVEL_SENIOR","location":"HCM"}`
+
+func TestRouter_CreateJobWithoutToken401(t *testing.T) {
+	e := setup(t)
+	rec := e.do("POST", "/v1/jobs", createJobBody, jsonHdr)
+	assert.Equal(t, 401, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"UNAUTHENTICATED"`)
+	assert.Equal(t, 0, e.job.createCalls)
+}
+
+func TestRouter_CreateJobRecruiter201(t *testing.T) {
+	e := setup(t)
+	tok := e.is.Sign(t, "u-1", authz.RoleRecruiter, time.Minute)
+	rec := e.do("POST", "/v1/jobs", createJobBody, map[string]string{
+		"Content-Type": "application/json", "Authorization": "Bearer " + tok,
+	})
+	require.Equal(t, 201, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"status":"JOB_STATUS_DRAFT"`)
+	assert.Equal(t, 1, e.job.createCalls)
+}
+
+func TestRouter_PublishCustomVerb(t *testing.T) {
+	e := setup(t)
+	tok := e.is.Sign(t, "u-1", authz.RoleRecruiter, time.Minute)
+	rec := e.do("POST", "/v1/jobs/"+jobID+":publish", "{}", map[string]string{
+		"Content-Type": "application/json", "Authorization": "Bearer " + tok,
+	})
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	require.NotNil(t, e.job.publishReq)
+	assert.Equal(t, jobID, e.job.publishReq.Id)
+}
+
+func TestRouter_MyJobsRoutesToJobService(t *testing.T) {
+	e := setup(t)
+	tok := e.is.Sign(t, "u-1", authz.RoleRecruiter, time.Minute)
+	rec := e.do("GET", "/v1/me/jobs", "", map[string]string{"Authorization": "Bearer " + tok})
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	assert.Equal(t, 1, e.job.myCalls)
+	assert.Equal(t, 0, e.fake.getMeCalls)
+}
+
+func TestRouter_GetJobNotCreated201(t *testing.T) {
+	e := setup(t)
+	rec := e.do("GET", "/v1/jobs/"+jobID, "", nil)
+	assert.Equal(t, 200, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"status":"JOB_STATUS_OPEN"`)
+}
+
+func TestConnsReady_ShutdownConnNotReady(t *testing.T) {
+	open, err := grpcx.Dial("passthrough:///open",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return nil, io.EOF }))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = open.Close() })
+	closed, err := grpcx.Dial("passthrough:///closed",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return nil, io.EOF }))
+	require.NoError(t, err)
+	require.NoError(t, closed.Close())
+	require.Equal(t, connectivity.Shutdown, closed.GetState())
+
+	assert.NoError(t, router.ConnsReady(open)(t.Context()))
+	assert.Error(t, router.ConnsReady(open, closed)(t.Context()))
+	assert.Error(t, router.ConnsReady(open, nil)(t.Context()))
 }

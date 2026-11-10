@@ -26,11 +26,15 @@ services:
       <<: *auth-env
       AUTH_JWT_PRIVATE_KEY_PATH: /secrets/jwt.pem
       AUTH_JWKS_URL: http://localhost:8001/.well-known/jwks.json
+      AUTH_KAFKA_BROKERS: redpanda:9092
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     volumes:
       - ./secrets/jwt.pem:/secrets/jwt.pem:ro
     depends_on:
       auth-migrate:
+        condition: service_completed_successfully
+      # The outbox relay publishes to topics that must exist (auto-create is off).
+      topics-init:
         condition: service_completed_successfully
     # Distroless image: no shell for a healthcheck. The gateway retries the
     # JWKS fetch while auth starts.
@@ -51,6 +55,43 @@ services:
     profiles: ["tools"]
     restart: "no"
 
+  job-migrate:
+    image: migrate/migrate:v4.18.3
+    command:
+      - -path=/migrations
+      - -database=postgres://job_svc:${JOB_DB_PASSWORD:?set JOB_DB_PASSWORD in .env}@postgres:5432/job_db?sslmode=disable
+      - up
+    volumes:
+      - ../../services/job/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  job:
+    build:
+      context: ../..
+      dockerfile: services/job/Dockerfile
+    image: smarthire/job:dev
+    environment:
+      JOB_DB_DSN: postgres://job_svc:${JOB_DB_PASSWORD:?set JOB_DB_PASSWORD in .env}@postgres:5432/job_db?sslmode=disable
+      JOB_JWKS_URL: http://auth:8001/.well-known/jwks.json
+      JOB_KAFKA_BROKERS: redpanda:9092
+      JOB_LOG_LEVEL: info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      job-migrate:
+        condition: service_completed_successfully
+      topics-init:
+        condition: service_completed_successfully
+      # Job retries the JWKS fetch while auth starts.
+      auth:
+        condition: service_started
+    # Distroless image: no shell for a healthcheck. /readyz answers before
+    # gRPC listens, so nothing gates on it: the gateway dials lazily and
+    # `make up` waits until GET /v1/jobs succeeds end to end.
+    restart: unless-stopped
+
   gateway:
     build:
       context: ../..
@@ -58,6 +99,7 @@ services:
     image: smarthire/gateway:dev
     environment:
       GATEWAY_AUTH_GRPC_ADDR: auth:9001
+      GATEWAY_JOB_GRPC_ADDR: job:9002
       GATEWAY_AUTH_JWKS_URL: http://auth:8001/.well-known/jwks.json
       GATEWAY_REDIS_ADDR: redis:6379
       GATEWAY_COOKIE_SECURE: "false"
@@ -68,6 +110,8 @@ services:
       - "127.0.0.1:8080:8080"
     depends_on:
       auth:
+        condition: service_started
+      job:
         condition: service_started
       redis:
         condition: service_healthy

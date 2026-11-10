@@ -14,6 +14,7 @@ func TestLoad_Defaults(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 8080, c.HTTPPort)
 	assert.Equal(t, "auth:9001", c.AuthGRPCAddr)
+	assert.Equal(t, "job:9002", c.JobGRPCAddr)
 	assert.Equal(t, []string{"http://localhost:3001"}, c.CORSOrigins)
 	assert.True(t, c.CookieSecure)
 	assert.Empty(t, c.TrustedProxies)

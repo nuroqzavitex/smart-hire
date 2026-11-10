@@ -15,12 +15,14 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	authv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/auth/v1"
+	jobv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/authhttp"
@@ -34,6 +36,7 @@ import (
 type Deps struct {
 	Log      *slog.Logger
 	AuthConn *grpc.ClientConn
+	JobConn  *grpc.ClientConn
 	Verifier grpcx.TokenVerifier
 	Limiter  *ratelimit.Limiter
 	Cfg      config.Config
@@ -108,8 +111,12 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 			}
 			return nil
 		}),
-		runtime.WithForwardResponseOption(func(_ context.Context, w http.ResponseWriter, m proto.Message) error {
+		runtime.WithForwardResponseOption(func(ctx context.Context, w http.ResponseWriter, m proto.Message) error {
+			// Job is shared by CreateJob and GetJob, so CreateJob is
+			// recognised by RPC method rather than by message type.
 			if _, ok := m.(*authv1.RegisterResponse); ok {
+				w.WriteHeader(http.StatusCreated)
+			} else if method, _ := runtime.RPCMethod(ctx); method == jobv1.JobService_CreateJob_FullMethodName {
 				w.WriteHeader(http.StatusCreated)
 			}
 			return nil
@@ -121,6 +128,10 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	client := authv1.NewAuthServiceClient(d.AuthConn)
 	if err := authv1.RegisterAuthServiceHandlerClient(ctx, mux, client); err != nil {
 		return nil, fmt.Errorf("register auth gateway handler: %w", err)
+	}
+
+	if err := jobv1.RegisterJobServiceHandlerClient(ctx, mux, jobv1.NewJobServiceClient(d.JobConn)); err != nil {
+		return nil, fmt.Errorf("register job gateway handler: %w", err)
 	}
 
 	api := stripGRPCTimeout(http.MaxBytesHandler(mux, maxBodyBytes))
@@ -173,4 +184,16 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 		r.Handle("/v1/*", api)
 	})
 	return r, nil
+}
+
+// ConnsReady reports not-ready when any connection is nil or shut down.
+func ConnsReady(conns ...*grpc.ClientConn) func(context.Context) error {
+	return func(context.Context) error {
+		for i, c := range conns {
+			if c == nil || c.GetState() == connectivity.Shutdown {
+				return fmt.Errorf("grpc connection %d not ready", i)
+			}
+		}
+		return nil
+	}
 }

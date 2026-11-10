@@ -35,14 +35,14 @@ definitions:
         $ref: '#/definitions/v1JobLevel'
       location:
         type: string
-      niceToHaveSkills:
+      nice_to_have_skills:
         $ref: '#/definitions/v1StringList'
-      requiredSkills:
+      required_skills:
         $ref: '#/definitions/v1StringList'
-      salaryMax:
+      salary_max:
         format: int32
         type: integer
-      salaryMin:
+      salary_min:
         format: int32
         type: integer
       title:
@@ -98,18 +98,18 @@ definitions:
         $ref: '#/definitions/v1JobLevel'
       location:
         type: string
-      niceToHaveSkills:
+      nice_to_have_skills:
         items:
           type: string
         type: array
-      requiredSkills:
+      required_skills:
         items:
           type: string
         type: array
-      salaryMax:
+      salary_max:
         format: int32
         type: integer
-      salaryMin:
+      salary_min:
         format: int32
         type: integer
       title:
@@ -117,7 +117,7 @@ definitions:
     type: object
   v1Job:
     properties:
-      createdAt:
+      created_at:
         format: date-time
         type: string
       description:
@@ -128,30 +128,30 @@ definitions:
         $ref: '#/definitions/v1JobLevel'
       location:
         type: string
-      niceToHaveSkills:
+      nice_to_have_skills:
         items:
           type: string
         type: array
-      publishedAt:
+      published_at:
         format: date-time
         type: string
-      recruiterId:
+      recruiter_id:
         type: string
-      requiredSkills:
+      required_skills:
         items:
           type: string
         type: array
-      salaryMax:
+      salary_max:
         format: int32
         type: integer
-      salaryMin:
+      salary_min:
         format: int32
         type: integer
       status:
         $ref: '#/definitions/v1JobStatus'
       title:
         type: string
-      updatedAt:
+      updated_at:
         format: date-time
         type: string
       version:
@@ -183,7 +183,7 @@ definitions:
           $ref: '#/definitions/v1Job'
           type: object
         type: array
-      nextPageToken:
+      next_page_token:
         type: string
     type: object
   v1RegisterRequest:
@@ -197,7 +197,7 @@ definitions:
     type: object
   v1RegisterResponse:
     properties:
-      userId:
+      user_id:
         type: string
     type: object
   v1Role:
@@ -217,7 +217,7 @@ definitions:
     type: object
   v1User:
     properties:
-      createdAt:
+      created_at:
         format: date-time
         type: string
       email:
@@ -383,17 +383,17 @@ paths:
         type: string
       - format: int32
         in: query
-        name: salaryMin
+        name: salary_min
         required: false
         type: integer
       - description: 0 = default 20
         format: int32
         in: query
-        name: pageSize
+        name: page_size
         required: false
         type: integer
       - in: query
-        name: pageToken
+        name: page_token
         required: false
         type: string
       responses:
@@ -566,11 +566,11 @@ paths:
         type: string
       - format: int32
         in: query
-        name: pageSize
+        name: page_size
         required: false
         type: integer
       - in: query
-        name: pageToken
+        name: page_token
         required: false
         type: string
       responses:

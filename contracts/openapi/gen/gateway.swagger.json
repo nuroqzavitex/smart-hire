@@ -108,14 +108,14 @@
             "default": "JOB_LEVEL_UNSPECIFIED"
           },
           {
-            "name": "salaryMin",
+            "name": "salary_min",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageSize",
+            "name": "page_size",
             "description": "0 = default 20",
             "in": "query",
             "required": false,
@@ -123,7 +123,7 @@
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -390,14 +390,14 @@
             "default": "JOB_STATUS_UNSPECIFIED"
           },
           {
-            "name": "pageSize",
+            "name": "page_size",
             "in": "query",
             "required": false,
             "type": "integer",
             "format": "int32"
           },
           {
-            "name": "pageToken",
+            "name": "page_token",
             "in": "query",
             "required": false,
             "type": "string"
@@ -425,10 +425,10 @@
         "description": {
           "type": "string"
         },
-        "requiredSkills": {
+        "required_skills": {
           "$ref": "#/definitions/v1StringList"
         },
-        "niceToHaveSkills": {
+        "nice_to_have_skills": {
           "$ref": "#/definitions/v1StringList"
         },
         "level": {
@@ -437,11 +437,11 @@
         "location": {
           "type": "string"
         },
-        "salaryMin": {
+        "salary_min": {
           "type": "integer",
           "format": "int32"
         },
-        "salaryMax": {
+        "salary_max": {
           "type": "integer",
           "format": "int32"
         }
@@ -484,13 +484,13 @@
         "description": {
           "type": "string"
         },
-        "requiredSkills": {
+        "required_skills": {
           "type": "array",
           "items": {
             "type": "string"
           }
         },
-        "niceToHaveSkills": {
+        "nice_to_have_skills": {
           "type": "array",
           "items": {
             "type": "string"
@@ -502,11 +502,11 @@
         "location": {
           "type": "string"
         },
-        "salaryMin": {
+        "salary_min": {
           "type": "integer",
           "format": "int32"
         },
-        "salaryMax": {
+        "salary_max": {
           "type": "integer",
           "format": "int32"
         }
@@ -518,7 +518,7 @@
         "id": {
           "type": "string"
         },
-        "recruiterId": {
+        "recruiter_id": {
           "type": "string"
         },
         "title": {
@@ -527,13 +527,13 @@
         "description": {
           "type": "string"
         },
-        "requiredSkills": {
+        "required_skills": {
           "type": "array",
           "items": {
             "type": "string"
           }
         },
-        "niceToHaveSkills": {
+        "nice_to_have_skills": {
           "type": "array",
           "items": {
             "type": "string"
@@ -545,11 +545,11 @@
         "location": {
           "type": "string"
         },
-        "salaryMin": {
+        "salary_min": {
           "type": "integer",
           "format": "int32"
         },
-        "salaryMax": {
+        "salary_max": {
           "type": "integer",
           "format": "int32"
         },
@@ -560,15 +560,15 @@
           "type": "string",
           "format": "int64"
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         },
-        "updatedAt": {
+        "updated_at": {
           "type": "string",
           "format": "date-time"
         },
-        "publishedAt": {
+        "published_at": {
           "type": "string",
           "format": "date-time"
         }
@@ -606,7 +606,7 @@
             "$ref": "#/definitions/v1Job"
           }
         },
-        "nextPageToken": {
+        "next_page_token": {
           "type": "string"
         }
       }
@@ -628,7 +628,7 @@
     "v1RegisterResponse": {
       "type": "object",
       "properties": {
-        "userId": {
+        "user_id": {
           "type": "string"
         }
       }
@@ -666,7 +666,7 @@
         "role": {
           "$ref": "#/definitions/v1Role"
         },
-        "createdAt": {
+        "created_at": {
           "type": "string",
           "format": "date-time"
         }

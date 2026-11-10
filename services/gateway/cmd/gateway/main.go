@@ -14,8 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	"google.golang.org/grpc/connectivity"
-
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
@@ -73,6 +71,12 @@ func run() error {
 	}
 	defer func() { _ = conn.Close() }()
 
+	jobConn, err := grpcx.Dial(cfg.JobGRPCAddr)
+	if err != nil {
+		return fmt.Errorf("dial job: %w", err)
+	}
+	defer func() { _ = jobConn.Close() }()
+
 	verifier, err := authz.NewVerifierWithRetry(ctx, cfg.AuthJWKSURL, cfg.JWTIssuer, cfg.JWTAudience, verifierRetry, log)
 	if err != nil {
 		return err
@@ -85,15 +89,11 @@ func run() error {
 	handler, err := router.New(ctx, router.Deps{
 		Log:      log,
 		AuthConn: conn,
+		JobConn:  jobConn,
 		Verifier: verifier,
 		Limiter:  ratelimit.New(rdb),
 		Cfg:      cfg,
-		Ready: func(context.Context) error {
-			if conn.GetState() == connectivity.Shutdown {
-				return errors.New("auth connection closed")
-			}
-			return nil
-		},
+		Ready:    router.ConnsReady(conn, jobConn),
 	})
 	if err != nil {
 		return err
