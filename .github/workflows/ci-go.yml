@@ -29,6 +29,7 @@ jobs:
             shared:
               - 'pkg/**'
               - 'gen/**'
+              - 'contracts/events/**'
               - 'go.work'
               - 'go.work.sum'
               - '.github/workflows/ci-go.yml'
@@ -36,6 +37,8 @@ jobs:
               - 'services/auth/**'
             gateway:
               - 'services/gateway/**'
+            job:
+              - 'services/job/**'
             tools:
               - 'tools/**'
       # Changes in pkg/, gen/ (or the workspace) run every module.
@@ -45,12 +48,14 @@ jobs:
           SHARED: ${{ steps.filter.outputs.shared }}
           AUTH: ${{ steps.filter.outputs.auth }}
           GATEWAY: ${{ steps.filter.outputs.gateway }}
+          JOB: ${{ steps.filter.outputs.job }}
           TOOLS: ${{ steps.filter.outputs.tools }}
         run: |
           mods=()
           if [ "$SHARED" = "true" ]; then mods+=(pkg gen/go); fi
           if [ "$SHARED" = "true" ] || [ "$AUTH" = "true" ]; then mods+=(services/auth); fi
           if [ "$SHARED" = "true" ] || [ "$GATEWAY" = "true" ]; then mods+=(services/gateway); fi
+          if [ "$SHARED" = "true" ] || [ "$JOB" = "true" ]; then mods+=(services/job); fi
           if [ "$SHARED" = "true" ] || [ "$TOOLS" = "true" ]; then mods+=(tools); fi
           if [ ${#mods[@]} -eq 0 ]; then
             json='[]'
@@ -81,12 +86,15 @@ jobs:
         working-directory: ${{ matrix.module }}
         run: go test -race ./...
       - name: Integration tests
-        if: startsWith(matrix.module, 'services/')
+        if: startsWith(matrix.module, 'services/') || matrix.module == 'pkg'
         working-directory: ${{ matrix.module }}
         run: go test -race -count=1 -tags integration ./...
       - name: Coverage gate
         if: matrix.module == 'services/auth'
         run: make cover-auth
+      - name: Coverage gate (job)
+        if: matrix.module == 'services/job'
+        run: make cover-job
 
   docker:
     needs: changes
@@ -95,7 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [auth, gateway]
+        service: [auth, gateway, job]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
