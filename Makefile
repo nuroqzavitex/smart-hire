@@ -41,7 +41,7 @@ lint:
 	done
 
 sqlc:
-	@for s in auth job; do \
+	@for s in auth job candidate; do \
 		MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR)/services/$$s:/src" -w /src sqlc/sqlc:1.29.0 generate || exit 1; \
 	done
 
@@ -50,7 +50,8 @@ test:
 		echo "go test $$d"; (cd $$d && go test ./...) || exit 1; \
 	done
 
-test-int:
+# Candidate integration tests run the locally built MinIO image (ADR 0008).
+test-int: minio-image
 	@for d in pkg services/*/; do \
 		echo "go test -tags integration $$d"; (cd $$d && go test -count=1 -tags integration ./...) || exit 1; \
 	done

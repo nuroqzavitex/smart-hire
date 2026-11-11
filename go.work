@@ -4,6 +4,7 @@ use (
 	./gen/go
 	./pkg
 	./services/auth
+	./services/candidate
 	./services/gateway
 	./services/job
 	./tools
