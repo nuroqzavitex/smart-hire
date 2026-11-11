@@ -5,7 +5,6 @@ package integration
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -21,8 +20,8 @@ import (
 
 	"github.com/nuroqzavitex/smarthire/pkg/event"
 	"github.com/nuroqzavitex/smarthire/pkg/kafka"
+	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/consumer"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/postgres"
-	"github.com/nuroqzavitex/smarthire/services/candidate/internal/app"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/domain"
 )
 
@@ -30,18 +29,6 @@ import (
 // cv.parse_failed, so a consumer group starting at the earliest offset never
 // sees another test's records. The handler routes by envelope event_type.
 type resultTopics struct{ parsed, failed, group string }
-
-// handler is the temporary consumer handler until Task 7 adds
-// consumer.NewHandler(svc).
-func handler(s *app.Service) kafka.Handler {
-	return func(ctx context.Context, _ event.Envelope, rec *kgo.Record) error {
-		err := s.HandleParseResult(ctx, rec.Value)
-		if errors.Is(err, app.ErrPoisonEvent) {
-			return kafka.Permanent(err)
-		}
-		return err
-	}
-}
 
 func startConsumer(t *testing.T) resultTopics {
 	t.Helper()
@@ -51,7 +38,7 @@ func startConsumer(t *testing.T) resultTopics {
 		rt.parsed, kafka.DLQTopic(rt.parsed), rt.failed, kafka.DLQTopic(rt.failed)))
 	c, err := kafka.NewConsumer(kafka.ConsumerConfig{
 		Brokers: []string{broker}, Group: rt.group, Topics: []string{rt.parsed, rt.failed},
-		Handler: handler(svc), BaseBackoff: 10 * time.Millisecond,
+		Handler: consumer.NewHandler(svc), BaseBackoff: 10 * time.Millisecond,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	require.NoError(t, err)

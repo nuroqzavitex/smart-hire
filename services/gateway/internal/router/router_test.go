@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	authv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/auth/v1"
+	candidatev1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/candidate/v1"
 	jobv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
 	"github.com/nuroqzavitex/smarthire/pkg/authz/authztest"
@@ -147,10 +148,87 @@ func (f *fakeJob) ListMyJobs(context.Context, *jobv1.ListMyJobsRequest) (*jobv1.
 	return &jobv1.ListJobsResponse{}, nil
 }
 
+type fakeCandidate struct {
+	candidatev1.UnimplementedCandidateServiceServer
+	mu            sync.Mutex
+	getProfile    int
+	listCalls     int
+	upsertProfile *candidatev1.UpsertMyProfileRequest
+	createUpload  *candidatev1.CreateUploadURLRequest
+	complete      *candidatev1.CompleteUploadRequest
+	reparse       *candidatev1.ReparseCVRequest
+	updateParsed  *candidatev1.UpdateParsedDataRequest
+	parsedDL      time.Time
+}
+
+// calls counts every RPC the fake has received.
+func (f *fakeCandidate) calls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := f.getProfile + f.listCalls
+	for _, set := range []bool{f.upsertProfile != nil, f.createUpload != nil, f.complete != nil, f.reparse != nil, f.updateParsed != nil} {
+		if set {
+			n++
+		}
+	}
+	return n
+}
+
+func (f *fakeCandidate) GetMyProfile(context.Context, *candidatev1.GetMyProfileRequest) (*candidatev1.Profile, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.getProfile++
+	return &candidatev1.Profile{UserId: "u-1", FullName: "A"}, nil
+}
+
+func (f *fakeCandidate) UpsertMyProfile(_ context.Context, r *candidatev1.UpsertMyProfileRequest) (*candidatev1.Profile, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.upsertProfile = r
+	return &candidatev1.Profile{UserId: "u-1", FullName: r.FullName}, nil
+}
+
+func (f *fakeCandidate) CreateUploadURL(_ context.Context, r *candidatev1.CreateUploadURLRequest) (*candidatev1.CreateUploadURLResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.createUpload = r
+	return &candidatev1.CreateUploadURLResponse{CvId: cvID, UploadUrl: "http://minio.test/x"}, nil
+}
+
+func (f *fakeCandidate) CompleteUpload(_ context.Context, r *candidatev1.CompleteUploadRequest) (*candidatev1.CV, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.complete = r
+	return &candidatev1.CV{Id: r.Id}, nil
+}
+
+func (f *fakeCandidate) ReparseCV(_ context.Context, r *candidatev1.ReparseCVRequest) (*candidatev1.CV, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reparse = r
+	return &candidatev1.CV{Id: r.Id}, nil
+}
+
+func (f *fakeCandidate) UpdateParsedData(ctx context.Context, r *candidatev1.UpdateParsedDataRequest) (*candidatev1.CV, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.updateParsed = r
+	f.parsedDL, _ = ctx.Deadline()
+	return &candidatev1.CV{Id: r.Id}, nil
+}
+
+func (f *fakeCandidate) ListMyCVs(context.Context, *candidatev1.ListMyCVsRequest) (*candidatev1.ListMyCVsResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.listCalls++
+	return &candidatev1.ListMyCVsResponse{}, nil
+}
+
 type env struct {
 	h    http.Handler
 	fake *fakeAuth
 	job  *fakeJob
+	cand *fakeCandidate
 	is   *authztest.KeyIssuer
 }
 
@@ -186,12 +264,24 @@ func setup(t *testing.T) *env {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = jconn.Close() })
 
+	fc := &fakeCandidate{}
+	clis := bufconn.Listen(1 << 20)
+	csrv, _ := grpcx.NewServer(grpcx.ServerConfig{Verifier: v, PublicMethods: []string{}})
+	candidatev1.RegisterCandidateServiceServer(csrv, fc)
+	go func() { _ = csrv.Serve(clis) }()
+	t.Cleanup(csrv.Stop)
+	cconn, err := grpcx.Dial("passthrough:///candbufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return clis.Dial() }))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cconn.Close() })
+
 	h, err := router.New(t.Context(), router.Deps{
-		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		AuthConn: conn,
-		JobConn:  jconn,
-		Verifier: v,
-		Limiter:  ratelimit.New(allowAll{}),
+		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		AuthConn:      conn,
+		JobConn:       jconn,
+		CandidateConn: cconn,
+		Verifier:      v,
+		Limiter:       ratelimit.New(allowAll{}),
 		Cfg: config.Config{
 			CORSOrigins:  []string{origin},
 			CookieSecure: true, RateLimitUserPerMin: 100, RateLimitLoginPerMin: 10,
@@ -199,7 +289,7 @@ func setup(t *testing.T) *env {
 		Ready: func(context.Context) error { return nil },
 	})
 	require.NoError(t, err)
-	return &env{h: h, fake: fake, job: fj, is: is}
+	return &env{h: h, fake: fake, job: fj, cand: fc, is: is}
 }
 
 func (e *env) do(method, path, body string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -407,6 +497,161 @@ func TestRouter_GetJobNotCreated201(t *testing.T) {
 	rec := e.do("GET", "/v1/jobs/"+jobID, "", nil)
 	assert.Equal(t, 200, rec.Code, rec.Body.String())
 	assert.Contains(t, rec.Body.String(), `"status":"JOB_STATUS_OPEN"`)
+}
+
+const cvID = "5f1d7a2e-3c4b-4d5e-8f60-718293a4b5c6"
+
+func (e *env) candidateHdr(t *testing.T) map[string]string {
+	t.Helper()
+	tok := e.is.Sign(t, "u-1", authz.RoleCandidate, time.Minute)
+	return map[string]string{"Content-Type": "application/json", "Authorization": "Bearer " + tok}
+}
+
+func TestRouter_ProfileRoutesToCandidate(t *testing.T) {
+	e := setup(t)
+	hdr := e.candidateHdr(t)
+
+	rec := e.do("GET", "/v1/me/profile", "", hdr)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"full_name":"A"`)
+
+	rec = e.do("PUT", "/v1/me/profile", `{"full_name":"Nguyen Van A","location":"HCM"}`, hdr)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+
+	e.cand.mu.Lock()
+	assert.Equal(t, 1, e.cand.getProfile)
+	require.NotNil(t, e.cand.upsertProfile)
+	assert.Equal(t, "Nguyen Van A", e.cand.upsertProfile.FullName)
+	assert.Equal(t, "HCM", e.cand.upsertProfile.GetLocation())
+	e.cand.mu.Unlock()
+	e.fake.mu.Lock()
+	defer e.fake.mu.Unlock()
+	assert.Equal(t, 0, e.fake.getMeCalls)
+}
+
+func TestRouter_MeStillRoutesToAuth(t *testing.T) {
+	e := setup(t)
+	rec := e.do("GET", "/v1/me", "", e.candidateHdr(t))
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	e.fake.mu.Lock()
+	assert.Equal(t, 1, e.fake.getMeCalls)
+	e.fake.mu.Unlock()
+	assert.Equal(t, 0, e.cand.calls())
+}
+
+func TestRouter_CVCustomVerbs(t *testing.T) {
+	e := setup(t)
+	hdr := e.candidateHdr(t)
+
+	rec := e.do("POST", "/v1/cvs/"+cvID+":complete", "{}", hdr)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	rec = e.do("POST", "/v1/cvs/"+cvID+":reparse", "{}", hdr)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	rec = e.do("POST", "/v1/cvs/upload-url", `{"consent":true,"file_name":"cv.pdf"}`, hdr)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"cv_id":"`+cvID+`"`)
+
+	e.cand.mu.Lock()
+	defer e.cand.mu.Unlock()
+	require.NotNil(t, e.cand.complete)
+	assert.Equal(t, cvID, e.cand.complete.Id)
+	require.NotNil(t, e.cand.reparse)
+	assert.Equal(t, cvID, e.cand.reparse.Id)
+	require.NotNil(t, e.cand.createUpload)
+	assert.True(t, e.cand.createUpload.Consent)
+	assert.Equal(t, "cv.pdf", e.cand.createUpload.FileName)
+}
+
+const parsedBody = `{"full_name":"A","email":null,"skills":["Go"],"years_of_experience":3,"current_title":null,` +
+	`"education":[],"experiences":[],"languages":["vi"],"location":null}`
+
+func TestRouter_PatchParsedBodyIsParsedCV(t *testing.T) {
+	e := setup(t)
+	rec := e.do("PATCH", "/v1/cvs/"+cvID+"/parsed", parsedBody, e.candidateHdr(t))
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+
+	e.cand.mu.Lock()
+	defer e.cand.mu.Unlock()
+	req := e.cand.updateParsed
+	require.NotNil(t, req)
+	assert.Equal(t, cvID, req.Id)
+	require.NotNil(t, req.Parsed)
+	assert.Equal(t, []string{"Go"}, req.Parsed.Skills)
+	assert.Equal(t, []string{"vi"}, req.Parsed.Languages)
+	assert.Equal(t, "A", req.Parsed.GetFullName())
+	assert.InDelta(t, 3.0, req.Parsed.GetYearsOfExperience(), 0)
+}
+
+func TestRouter_PatchParsedAllowsLargeBody(t *testing.T) {
+	e := setup(t)
+	hdr := e.candidateHdr(t)
+
+	// ~300 KiB of valid JSON: above the default 64 KiB cap, below 512 KiB.
+	skills := make([]string, 0, 3000)
+	for range 3000 {
+		skills = append(skills, `"`+strings.Repeat("s", 100)+`"`)
+	}
+	big := `{"skills":[` + strings.Join(skills, ",") + `],"education":[],"experiences":[],"languages":[]}`
+	require.Greater(t, len(big), 300<<10)
+	require.Less(t, len(big), 512<<10)
+	rec := e.do("PATCH", "/v1/cvs/"+cvID+"/parsed", big, hdr)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	e.cand.mu.Lock()
+	require.NotNil(t, e.cand.updateParsed)
+	assert.Len(t, e.cand.updateParsed.Parsed.Skills, 3000)
+	e.cand.updateParsed = nil
+	e.cand.mu.Unlock()
+
+	// Above 512 KiB the parsed route rejects too.
+	huge := `{"skills":["` + strings.Repeat("s", 600<<10) + `"]}`
+	rec = e.do("PATCH", "/v1/cvs/"+cvID+"/parsed", huge, hdr)
+	assert.Equal(t, 400, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), bodyTooLarge)
+
+	// Other routes keep the 64 KiB cap: a valid request padded with JSON
+	// whitespace past 64 KiB (well under 512 KiB) is rejected by size only.
+	bigUpload := `{"consent":true,` + strings.Repeat(" ", 100<<10) + `"file_name":"cv.pdf"}`
+	rec = e.do("POST", "/v1/cvs/upload-url", bigUpload, hdr)
+	assert.Equal(t, 400, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), bodyTooLarge)
+
+	e.cand.mu.Lock()
+	defer e.cand.mu.Unlock()
+	assert.Nil(t, e.cand.updateParsed)
+	assert.Nil(t, e.cand.createUpload)
+}
+
+// bodyTooLarge is the message http.MaxBytesReader surfaces through the
+// gateway error envelope.
+const bodyTooLarge = "http: request body too large"
+
+func TestRouter_PatchParsedClientGrpcTimeoutIgnored(t *testing.T) {
+	e := setup(t)
+	hdr := e.candidateHdr(t)
+	hdr["Grpc-Timeout"] = "1H"
+	rec := e.do("PATCH", "/v1/cvs/"+cvID+"/parsed", parsedBody, hdr)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	e.cand.mu.Lock()
+	defer e.cand.mu.Unlock()
+	require.False(t, e.cand.parsedDL.IsZero())
+	assert.LessOrEqual(t, time.Until(e.cand.parsedDL), grpcx.DefaultTimeout)
+}
+
+func TestRouter_CVsWithoutToken401(t *testing.T) {
+	e := setup(t)
+	rec := e.do("GET", "/v1/cvs", "", nil)
+	assert.Equal(t, 401, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"code":"UNAUTHENTICATED"`)
+	assert.Equal(t, 0, e.cand.calls())
+}
+
+func TestRouter_PatchParsedRejectsInvalidToken(t *testing.T) {
+	e := setup(t)
+	rec := e.do("PATCH", "/v1/cvs/"+cvID+"/parsed", parsedBody, map[string]string{
+		"Content-Type": "application/json", "Authorization": "Bearer garbage",
+	})
+	assert.Equal(t, 401, rec.Code, rec.Body.String())
+	assert.Equal(t, 0, e.cand.calls())
 }
 
 func TestConnsReady_ShutdownConnNotReady(t *testing.T) {

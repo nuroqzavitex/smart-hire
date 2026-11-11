@@ -77,6 +77,12 @@ func run() error {
 	}
 	defer func() { _ = jobConn.Close() }()
 
+	candConn, err := grpcx.Dial(cfg.CandidateGRPCAddr)
+	if err != nil {
+		return fmt.Errorf("dial candidate: %w", err)
+	}
+	defer func() { _ = candConn.Close() }()
+
 	verifier, err := authz.NewVerifierWithRetry(ctx, cfg.AuthJWKSURL, cfg.JWTIssuer, cfg.JWTAudience, verifierRetry, log)
 	if err != nil {
 		return err
@@ -87,13 +93,14 @@ func run() error {
 	defer func() { _ = rdb.Close() }()
 
 	handler, err := router.New(ctx, router.Deps{
-		Log:      log,
-		AuthConn: conn,
-		JobConn:  jobConn,
-		Verifier: verifier,
-		Limiter:  ratelimit.New(rdb),
-		Cfg:      cfg,
-		Ready:    router.ConnsReady(conn, jobConn),
+		Log:           log,
+		AuthConn:      conn,
+		JobConn:       jobConn,
+		CandidateConn: candConn,
+		Verifier:      verifier,
+		Limiter:       ratelimit.New(rdb),
+		Cfg:           cfg,
+		Ready:         router.ConnsReady(conn, jobConn, candConn),
 	})
 	if err != nil {
 		return err

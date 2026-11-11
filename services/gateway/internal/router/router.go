@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	authv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/auth/v1"
+	candidatev1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/candidate/v1"
 	jobv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
@@ -34,13 +35,14 @@ import (
 
 // Deps are the router's collaborators.
 type Deps struct {
-	Log      *slog.Logger
-	AuthConn *grpc.ClientConn
-	JobConn  *grpc.ClientConn
-	Verifier grpcx.TokenVerifier
-	Limiter  *ratelimit.Limiter
-	Cfg      config.Config
-	Ready    func(context.Context) error
+	Log           *slog.Logger
+	AuthConn      *grpc.ClientConn
+	JobConn       *grpc.ClientConn
+	CandidateConn *grpc.ClientConn
+	Verifier      grpcx.TokenVerifier
+	Limiter       *ratelimit.Limiter
+	Cfg           config.Config
+	Ready         func(context.Context) error
 }
 
 // ParseTrustedProxies parses CIDRs (a bare IP is accepted as a single host).
@@ -76,6 +78,10 @@ func incomingHeaderMatcher(key string) (string, bool) {
 
 // maxBodyBytes caps request bodies forwarded to the grpc-gateway mux.
 const maxBodyBytes = 64 << 10
+
+// maxParsedBodyBytes caps PATCH /v1/cvs/{id}/parsed, whose ParsedCV body can
+// legitimately exceed maxBodyBytes (plan decision 2).
+const maxParsedBodyBytes = 512 << 10
 
 // dropHeader never forwards gRPC response metadata or trailers to clients
 // (no Grpc-Metadata-* / Grpc-Trailer-* headers).
@@ -134,7 +140,12 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 		return nil, fmt.Errorf("register job gateway handler: %w", err)
 	}
 
+	if err := candidatev1.RegisterCandidateServiceHandlerClient(ctx, mux, candidatev1.NewCandidateServiceClient(d.CandidateConn)); err != nil {
+		return nil, fmt.Errorf("register candidate gateway handler: %w", err)
+	}
+
 	api := stripGRPCTimeout(http.MaxBytesHandler(mux, maxBodyBytes))
+	apiLarge := stripGRPCTimeout(http.MaxBytesHandler(mux, maxParsedBodyBytes))
 
 	userRule := ratelimit.UserRule()
 	userRule.Limit = d.Cfg.RateLimitUserPerMin
@@ -181,6 +192,7 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 			w.WriteHeader(http.StatusOK)
 		})
 		r.With(middleware.RequireAuth).Get("/v1/me", api.ServeHTTP)
+		r.Patch("/v1/cvs/{id}/parsed", apiLarge.ServeHTTP)
 		r.Handle("/v1/*", api)
 	})
 	return r, nil
