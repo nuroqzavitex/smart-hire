@@ -1,0 +1,66 @@
+[project]
+name = "ai-service"
+version = "0.1.0"
+description = "SmartHire AI service: parses uploaded CVs into structured ParsedCV events."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.14",
+    "anthropic>=1.0,<2",
+    "confluent-kafka>=2.6",
+    "fastapi>=0.115",
+    "minio>=7.2",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.28",
+    "opentelemetry-sdk>=1.28",
+    "prometheus-client>=0.21",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "pymupdf>=1.24,<2",
+    "python-ulid>=3.0",
+    "sqlalchemy>=2.0",
+    "uvicorn>=0.32",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "jsonschema>=4.26.0",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "rfc3339-validator>=0.1.4",
+    "ruff>=0.17.4",
+    "testcontainers[kafka,minio,postgres]>=4.15.0",
+]
+
+[tool.uv.build-backend]
+module-name = "ai_service"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["ai_service.domain.*", "ai_service.services.*"]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs Docker (testcontainers)"]
+addopts = "-m 'not integration'"

@@ -1,5 +1,5 @@
 .PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job \
-	minio-image infra-up obs-up up down down-v migrate seed smoke logs
+	ai-sync ai-lint ai-test ai-test-int ai-cover minio-image infra-up obs-up up down down-v migrate seed smoke logs
 
 # Compose stack (deploy/docker), project name smarthire. Paths are absolute
 # and MSYS_NO_PATHCONV stops Git Bash on Windows from rewriting them.
@@ -51,8 +51,9 @@ test:
 	done
 
 # Candidate integration tests run the locally built MinIO image (ADR 0008).
+# Loops over the Go workspace modules: services/ai is Python, not a Go module.
 test-int: minio-image
-	@for d in pkg services/*/; do \
+	@for d in $$(go list -f '{{.Dir}}' -m); do \
 		echo "go test -tags integration $$d"; (cd $$d && go test -count=1 -tags integration ./...) || exit 1; \
 	done
 
@@ -63,6 +64,26 @@ cover-auth:
 cover-job:
 	cd services/job && go test -coverprofile=coverage.out ./internal/domain/... ./internal/app/... && \
 		go tool cover -func=coverage.out | awk '/^total:/ { sub("%","",$$3); printf "total coverage: %s%%\n", $$3; if ($$3+0 < 70) { print "coverage below 70%"; exit 1 } }'
+
+# Python AI service (services/ai, uv). ai-test runs unit tests only (no Docker);
+# ai-cover runs unit + integration tests together and needs Docker.
+AI_DIR := services/ai
+
+ai-sync:
+	cd $(AI_DIR) && uv sync --frozen
+
+ai-lint:
+	cd $(AI_DIR) && uv run ruff check . && uv run ruff format --check . && uv run mypy src
+
+ai-test:
+	cd $(AI_DIR) && uv run pytest tests/unit
+
+ai-test-int:
+	cd $(AI_DIR) && uv run pytest -m integration tests/integration
+
+ai-cover:
+	cd $(AI_DIR) && uv run pytest -m "integration or not integration" --cov=ai_service \
+		--cov-report=term --cov-fail-under=70 tests
 
 # MinIO server + mc built from the official GitHub source at pinned release
 # tags (E-R2, ADR 0008) as smarthire/minio:RELEASE.2025-04-22T22-12-26Z;
