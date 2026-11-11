@@ -1,5 +1,7 @@
-// Package eventschema validates serialized event envelopes against the JSON
-// Schemas stored in contracts/events.
+// Package eventschema validates serialized event envelopes (and named $defs
+// such as cv.parsed#ParsedCV) against the JSON Schemas stored in
+// contracts/events. It is used by tests and at runtime by consumers; service
+// images copy contracts/events to /contracts/events so Dir finds it.
 package eventschema
 
 import (
@@ -14,7 +16,10 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-var typeRe = regexp.MustCompile(`^[a-z]+(\.[a-z_]+)+$`)
+var (
+	typeRe = regexp.MustCompile(`^[a-z]+(\.[a-z_]+)+$`)
+	defRe  = regexp.MustCompile(`^[A-Za-z]+$`)
+)
 
 var (
 	mu    sync.Mutex
@@ -41,14 +46,17 @@ func Dir() (string, error) {
 	}
 }
 
-func schemaFor(eventType string) (*jsonschema.Schema, error) {
+// compile returns the cached schema for eventType, or for its $defs/<def>
+// when def is non-empty. Callers validate eventType and def first.
+func compile(eventType, def string) (*jsonschema.Schema, error) {
+	key := eventType
+	if def != "" {
+		key += "#" + def
+	}
 	mu.Lock()
 	defer mu.Unlock()
-	if s, ok := cache[eventType]; ok {
+	if s, ok := cache[key]; ok {
 		return s, nil
-	}
-	if !typeRe.MatchString(eventType) {
-		return nil, fmt.Errorf("invalid event type %q", eventType)
 	}
 	dir, err := Dir()
 	if err != nil {
@@ -68,23 +76,50 @@ func schemaFor(eventType string) (*jsonschema.Schema, error) {
 	if err := c.AddResource(url, doc); err != nil {
 		return nil, err
 	}
-	s, err := c.Compile(url)
-	if err != nil {
-		return nil, fmt.Errorf("compile schema %q: %w", eventType, err)
+	target := url
+	if def != "" {
+		target += "#/$defs/" + def
 	}
-	cache[eventType] = s
+	s, err := c.Compile(target)
+	if err != nil {
+		return nil, fmt.Errorf("compile schema %q: %w", key, err)
+	}
+	cache[key] = s
 	return s, nil
+}
+
+func validate(s *jsonschema.Schema, doc []byte) error {
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(doc))
+	if err != nil {
+		return fmt.Errorf("parse document: %w", err)
+	}
+	return s.Validate(inst)
 }
 
 // Validate checks a JSON event envelope against the v1 schema of eventType.
 func Validate(eventType string, doc []byte) error {
-	s, err := schemaFor(eventType)
+	if !typeRe.MatchString(eventType) {
+		return fmt.Errorf("invalid event type %q", eventType)
+	}
+	s, err := compile(eventType, "")
 	if err != nil {
 		return err
 	}
-	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(doc))
-	if err != nil {
-		return fmt.Errorf("parse event: %w", err)
+	return validate(s, doc)
+}
+
+// ValidateDef checks a JSON document against $defs/<def> of the v1 schema of
+// eventType (e.g. ValidateDef("cv.parsed", "ParsedCV", body)).
+func ValidateDef(eventType, def string, doc []byte) error {
+	if !typeRe.MatchString(eventType) {
+		return fmt.Errorf("invalid event type %q", eventType)
 	}
-	return s.Validate(inst)
+	if !defRe.MatchString(def) {
+		return fmt.Errorf("invalid schema definition name %q", def)
+	}
+	s, err := compile(eventType, def)
+	if err != nil {
+		return err
+	}
+	return validate(s, doc)
 }

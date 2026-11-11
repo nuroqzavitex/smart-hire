@@ -1,0 +1,28 @@
+{
+  "full_name": null,
+  "email": null,
+  "skills": [
+    "Go"
+  ],
+  "years_of_experience": 0,
+  "current_title": null,
+  "education": [
+    {
+      "school": "Trường THPT Chu Văn An",
+      "degree": null,
+      "major": null,
+      "end_year": null
+    }
+  ],
+  "experiences": [
+    {
+      "company": "Freelance",
+      "title": "Developer",
+      "start": null,
+      "end": null,
+      "highlights": []
+    }
+  ],
+  "languages": [],
+  "location": null
+}

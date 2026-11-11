@@ -9,6 +9,9 @@
       "name": "AuthService"
     },
     {
+      "name": "CandidateService"
+    },
+    {
       "name": "JobService"
     }
   ],
@@ -48,6 +51,220 @@
         ],
         "tags": [
           "AuthService"
+        ]
+      }
+    },
+    "/v1/cvs": {
+      "get": {
+        "operationId": "CandidateService_ListMyCVs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListMyCVsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "page_size",
+            "description": "0 = default 20",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "CandidateService"
+        ]
+      }
+    },
+    "/v1/cvs/upload-url": {
+      "post": {
+        "operationId": "CandidateService_CreateUploadURL",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateUploadURLResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateUploadURLRequest"
+            }
+          }
+        ],
+        "tags": [
+          "CandidateService"
+        ]
+      }
+    },
+    "/v1/cvs/{id}": {
+      "get": {
+        "operationId": "CandidateService_GetCV",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CV"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "CandidateService"
+        ]
+      }
+    },
+    "/v1/cvs/{id}/parsed": {
+      "patch": {
+        "operationId": "CandidateService_UpdateParsedData",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CV"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "parsed",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1ParsedCV"
+            }
+          }
+        ],
+        "tags": [
+          "CandidateService"
+        ]
+      }
+    },
+    "/v1/cvs/{id}:complete": {
+      "post": {
+        "operationId": "CandidateService_CompleteUpload",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CV"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/CandidateServiceCompleteUploadBody"
+            }
+          }
+        ],
+        "tags": [
+          "CandidateService"
+        ]
+      }
+    },
+    "/v1/cvs/{id}:reparse": {
+      "post": {
+        "operationId": "CandidateService_ReparseCV",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CV"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/CandidateServiceReparseCVBody"
+            }
+          }
+        ],
+        "tags": [
+          "CandidateService"
         ]
       }
     },
@@ -407,9 +624,67 @@
           "JobService"
         ]
       }
+    },
+    "/v1/me/profile": {
+      "get": {
+        "operationId": "CandidateService_GetMyProfile",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Profile"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "CandidateService"
+        ]
+      },
+      "put": {
+        "operationId": "CandidateService_UpsertMyProfile",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Profile"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpsertMyProfileRequest"
+            }
+          }
+        ],
+        "tags": [
+          "CandidateService"
+        ]
+      }
     }
   },
   "definitions": {
+    "CandidateServiceCompleteUploadBody": {
+      "type": "object"
+    },
+    "CandidateServiceReparseCVBody": {
+      "type": "object"
+    },
     "JobServiceCloseJobBody": {
       "type": "object"
     },
@@ -475,6 +750,58 @@
         }
       }
     },
+    "v1CV": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/v1CVStatus"
+        },
+        "file_name": {
+          "type": "string"
+        },
+        "parsed": {
+          "$ref": "#/definitions/v1ParsedCV"
+        },
+        "parse_error": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "string",
+          "format": "int64"
+        },
+        "version": {
+          "type": "string",
+          "format": "int64"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "parsed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "CV never exposes the storage object key or a download URL."
+    },
+    "v1CVStatus": {
+      "type": "string",
+      "enum": [
+        "CV_STATUS_UNSPECIFIED",
+        "CV_STATUS_UPLOADING",
+        "CV_STATUS_UPLOADED",
+        "CV_STATUS_PARSED",
+        "CV_STATUS_FAILED"
+      ],
+      "default": "CV_STATUS_UNSPECIFIED"
+    },
     "v1CreateJobRequest": {
       "type": "object",
       "properties": {
@@ -509,6 +836,74 @@
         "salary_max": {
           "type": "integer",
           "format": "int32"
+        }
+      }
+    },
+    "v1CreateUploadURLRequest": {
+      "type": "object",
+      "properties": {
+        "consent": {
+          "type": "boolean"
+        },
+        "file_name": {
+          "type": "string"
+        }
+      }
+    },
+    "v1CreateUploadURLResponse": {
+      "type": "object",
+      "properties": {
+        "cv_id": {
+          "type": "string"
+        },
+        "upload_url": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "v1Education": {
+      "type": "object",
+      "properties": {
+        "school": {
+          "type": "string"
+        },
+        "degree": {
+          "type": "string"
+        },
+        "major": {
+          "type": "string"
+        },
+        "end_year": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "description": "Content limits of ParsedCV (lengths, ranges, YYYY-MM dates) are enforced by\nthe JSON Schema contracts/events/cv.parsed.v1.json#/$defs/ParsedCV in the app."
+    },
+    "v1Experience": {
+      "type": "object",
+      "properties": {
+        "company": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "start": {
+          "type": "string"
+        },
+        "end": {
+          "type": "string"
+        },
+        "highlights": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -611,6 +1006,93 @@
         }
       }
     },
+    "v1ListMyCVsResponse": {
+      "type": "object",
+      "properties": {
+        "cvs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1CV"
+          }
+        },
+        "next_page_token": {
+          "type": "string"
+        }
+      }
+    },
+    "v1ParsedCV": {
+      "type": "object",
+      "properties": {
+        "full_name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "years_of_experience": {
+          "type": "number",
+          "format": "double"
+        },
+        "current_title": {
+          "type": "string"
+        },
+        "education": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Education"
+          }
+        },
+        "experiences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Experience"
+          }
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "location": {
+          "type": "string"
+        }
+      }
+    },
+    "v1Profile": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "full_name": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "v1RegisterRequest": {
       "type": "object",
       "properties": {
@@ -651,6 +1133,20 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "v1UpsertMyProfileRequest": {
+      "type": "object",
+      "properties": {
+        "full_name": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
         }
       }
     },

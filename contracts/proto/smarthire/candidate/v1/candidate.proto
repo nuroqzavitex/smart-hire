@@ -1,0 +1,123 @@
+syntax = "proto3";
+package smarthire.candidate.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+service CandidateService {
+  rpc GetMyProfile(GetMyProfileRequest) returns (Profile) { option (google.api.http) = { get: "/v1/me/profile" }; }
+  rpc UpsertMyProfile(UpsertMyProfileRequest) returns (Profile) { option (google.api.http) = { put: "/v1/me/profile" body: "*" }; }
+  rpc CreateUploadURL(CreateUploadURLRequest) returns (CreateUploadURLResponse) { option (google.api.http) = { post: "/v1/cvs/upload-url" body: "*" }; }
+  rpc CompleteUpload(CompleteUploadRequest) returns (CV) { option (google.api.http) = { post: "/v1/cvs/{id}:complete" body: "*" }; }
+  rpc GetCV(GetCVRequest) returns (CV) { option (google.api.http) = { get: "/v1/cvs/{id}" }; }
+  rpc ListMyCVs(ListMyCVsRequest) returns (ListMyCVsResponse) { option (google.api.http) = { get: "/v1/cvs" }; }
+  rpc UpdateParsedData(UpdateParsedDataRequest) returns (CV) { option (google.api.http) = { patch: "/v1/cvs/{id}/parsed" body: "parsed" }; }
+  rpc ReparseCV(ReparseCVRequest) returns (CV) { option (google.api.http) = { post: "/v1/cvs/{id}:reparse" body: "*" }; }
+}
+
+enum CVStatus {
+  CV_STATUS_UNSPECIFIED = 0;
+  CV_STATUS_UPLOADING = 1;
+  CV_STATUS_UPLOADED = 2;
+  CV_STATUS_PARSED = 3;
+  CV_STATUS_FAILED = 4;
+}
+
+message Profile {
+  string user_id = 1;
+  string full_name = 2;
+  optional string phone = 3;
+  optional string location = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message GetMyProfileRequest {}
+
+message UpsertMyProfileRequest {
+  string full_name = 1 [(buf.validate.field).string = {min_len: 1, max_len: 200}];
+  optional string phone = 2 [(buf.validate.field).string.max_len = 30];
+  optional string location = 3 [(buf.validate.field).string.max_len = 200];
+}
+
+// Content limits of ParsedCV (lengths, ranges, YYYY-MM dates) are enforced by
+// the JSON Schema contracts/events/cv.parsed.v1.json#/$defs/ParsedCV in the app.
+message Education {
+  string school = 1;
+  optional string degree = 2;
+  optional string major = 3;
+  optional int32 end_year = 4;
+}
+
+message Experience {
+  string company = 1;
+  string title = 2;
+  optional string start = 3;
+  optional string end = 4;
+  repeated string highlights = 5;
+}
+
+message ParsedCV {
+  optional string full_name = 1;
+  optional string email = 2;
+  repeated string skills = 3;
+  optional double years_of_experience = 4;
+  optional string current_title = 5;
+  repeated Education education = 6;
+  repeated Experience experiences = 7;
+  repeated string languages = 8;
+  optional string location = 9;
+}
+
+// CV never exposes the storage object key or a download URL.
+message CV {
+  string id = 1;
+  CVStatus status = 2;
+  string file_name = 3;
+  ParsedCV parsed = 4;
+  string parse_error = 5;
+  optional int64 size_bytes = 6;
+  int64 version = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  google.protobuf.Timestamp parsed_at = 10;
+}
+
+message CreateUploadURLRequest {
+  bool consent = 1 [(buf.validate.field).bool.const = true];
+  string file_name = 2 [(buf.validate.field).string = {min_len: 1, max_len: 255}];
+}
+
+message CreateUploadURLResponse {
+  string cv_id = 1;
+  string upload_url = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message CompleteUploadRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetCVRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message ListMyCVsRequest {
+  int32 page_size = 1 [(buf.validate.field).int32 = {gte: 0, lte: 50}]; // 0 = default 20
+  string page_token = 2 [(buf.validate.field).string.max_len = 512];
+}
+
+message ListMyCVsResponse {
+  repeated CV cvs = 1;
+  string next_page_token = 2;
+}
+
+message UpdateParsedDataRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  ParsedCV parsed = 2 [(buf.validate.field).required = true];
+}
+
+message ReparseCVRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}

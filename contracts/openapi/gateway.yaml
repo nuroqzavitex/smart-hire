@@ -1,6 +1,10 @@
 consumes:
 - application/json
 definitions:
+  CandidateServiceCompleteUploadBody:
+    type: object
+  CandidateServiceReparseCVBody:
+    type: object
   ErrorEnvelope:
     properties:
       error:
@@ -90,6 +94,44 @@ definitions:
       message:
         type: string
     type: object
+  v1CV:
+    description: CV never exposes the storage object key or a download URL.
+    properties:
+      created_at:
+        format: date-time
+        type: string
+      file_name:
+        type: string
+      id:
+        type: string
+      parse_error:
+        type: string
+      parsed:
+        $ref: '#/definitions/v1ParsedCV'
+      parsed_at:
+        format: date-time
+        type: string
+      size_bytes:
+        format: int64
+        type: string
+      status:
+        $ref: '#/definitions/v1CVStatus'
+      updated_at:
+        format: date-time
+        type: string
+      version:
+        format: int64
+        type: string
+    type: object
+  v1CVStatus:
+    default: CV_STATUS_UNSPECIFIED
+    enum:
+    - CV_STATUS_UNSPECIFIED
+    - CV_STATUS_UPLOADING
+    - CV_STATUS_UPLOADED
+    - CV_STATUS_PARSED
+    - CV_STATUS_FAILED
+    type: string
   v1CreateJobRequest:
     properties:
       description:
@@ -112,6 +154,53 @@ definitions:
       salary_min:
         format: int32
         type: integer
+      title:
+        type: string
+    type: object
+  v1CreateUploadURLRequest:
+    properties:
+      consent:
+        type: boolean
+      file_name:
+        type: string
+    type: object
+  v1CreateUploadURLResponse:
+    properties:
+      cv_id:
+        type: string
+      expires_at:
+        format: date-time
+        type: string
+      upload_url:
+        type: string
+    type: object
+  v1Education:
+    description: |-
+      Content limits of ParsedCV (lengths, ranges, YYYY-MM dates) are enforced by
+      the JSON Schema contracts/events/cv.parsed.v1.json#/$defs/ParsedCV in the app.
+    properties:
+      degree:
+        type: string
+      end_year:
+        format: int32
+        type: integer
+      major:
+        type: string
+      school:
+        type: string
+    type: object
+  v1Experience:
+    properties:
+      company:
+        type: string
+      end:
+        type: string
+      highlights:
+        items:
+          type: string
+        type: array
+      start:
+        type: string
       title:
         type: string
     type: object
@@ -186,6 +275,65 @@ definitions:
       next_page_token:
         type: string
     type: object
+  v1ListMyCVsResponse:
+    properties:
+      cvs:
+        items:
+          $ref: '#/definitions/v1CV'
+          type: object
+        type: array
+      next_page_token:
+        type: string
+    type: object
+  v1ParsedCV:
+    properties:
+      current_title:
+        type: string
+      education:
+        items:
+          $ref: '#/definitions/v1Education'
+          type: object
+        type: array
+      email:
+        type: string
+      experiences:
+        items:
+          $ref: '#/definitions/v1Experience'
+          type: object
+        type: array
+      full_name:
+        type: string
+      languages:
+        items:
+          type: string
+        type: array
+      location:
+        type: string
+      skills:
+        items:
+          type: string
+        type: array
+      years_of_experience:
+        format: double
+        type: number
+    type: object
+  v1Profile:
+    properties:
+      created_at:
+        format: date-time
+        type: string
+      full_name:
+        type: string
+      location:
+        type: string
+      phone:
+        type: string
+      updated_at:
+        format: date-time
+        type: string
+      user_id:
+        type: string
+    type: object
   v1RegisterRequest:
     properties:
       email:
@@ -214,6 +362,15 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  v1UpsertMyProfileRequest:
+    properties:
+      full_name:
+        type: string
+      location:
+        type: string
+      phone:
+        type: string
     type: object
   v1User:
     properties:
@@ -349,6 +506,142 @@ paths:
             $ref: '#/definitions/rpcStatus'
       tags:
       - AuthService
+  /v1/cvs:
+    get:
+      operationId: CandidateService_ListMyCVs
+      parameters:
+      - description: 0 = default 20
+        format: int32
+        in: query
+        name: page_size
+        required: false
+        type: integer
+      - in: query
+        name: page_token
+        required: false
+        type: string
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1ListMyCVsResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - CandidateService
+  /v1/cvs/{id}:
+    get:
+      operationId: CandidateService_GetCV
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1CV'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - CandidateService
+  /v1/cvs/{id}/parsed:
+    patch:
+      operationId: CandidateService_UpdateParsedData
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      - in: body
+        name: parsed
+        required: true
+        schema:
+          $ref: '#/definitions/v1ParsedCV'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1CV'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - CandidateService
+  /v1/cvs/{id}:complete:
+    post:
+      operationId: CandidateService_CompleteUpload
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/CandidateServiceCompleteUploadBody'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1CV'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - CandidateService
+  /v1/cvs/{id}:reparse:
+    post:
+      operationId: CandidateService_ReparseCV
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/CandidateServiceReparseCVBody'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1CV'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - CandidateService
+  /v1/cvs/upload-url:
+    post:
+      operationId: CandidateService_CreateUploadURL
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/v1CreateUploadURLRequest'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1CreateUploadURLResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - CandidateService
   /v1/jobs:
     get:
       operationId: JobService_ListJobs
@@ -584,9 +877,43 @@ paths:
             $ref: '#/definitions/rpcStatus'
       tags:
       - JobService
+  /v1/me/profile:
+    get:
+      operationId: CandidateService_GetMyProfile
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1Profile'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - CandidateService
+    put:
+      operationId: CandidateService_UpsertMyProfile
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/v1UpsertMyProfileRequest'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1Profile'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - CandidateService
 produces:
 - application/json
 swagger: "2.0"
 tags:
 - name: AuthService
+- name: CandidateService
 - name: JobService
