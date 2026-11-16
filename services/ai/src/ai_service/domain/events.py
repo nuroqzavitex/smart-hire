@@ -12,6 +12,7 @@ from ulid import ULID
 from ai_service.domain.models import ParseOutcome, ParseSuccess
 
 SOURCE = "ai-service"
+SOURCE_CANDIDATE = "candidate-service"
 EVENT_VERSION = 1
 CV_PARSED = "cv.parsed"
 CV_PARSE_FAILED = "cv.parse_failed"

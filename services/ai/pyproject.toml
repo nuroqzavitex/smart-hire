@@ -22,6 +22,10 @@ dependencies = [
     "uvicorn>=0.32",
 ]
 
+[project.scripts]
+ai-api = "ai_service.main_api:main"
+ai-worker = "ai_service.main_worker:main"
+
 [build-system]
 requires = ["uv_build>=0.9.5,<0.12.0"]
 build-backend = "uv_build"
@@ -50,6 +54,7 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+"migrations/**" = ["S608"]
 
 [tool.mypy]
 python_version = "3.12"

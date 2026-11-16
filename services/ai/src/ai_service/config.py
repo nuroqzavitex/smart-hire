@@ -9,6 +9,15 @@ _DSN_SCHEMES = ("postgres://", "postgresql://", "postgresql+psycopg://")
 _PSYCOPG_SCHEME = "postgresql+psycopg://"
 
 
+def normalize_dsn(value: str) -> str:
+    """Rewrites postgres:// and postgresql:// to the SQLAlchemy psycopg 3 dialect."""
+    for scheme in _DSN_SCHEMES:
+        if value.startswith(scheme):
+            return _PSYCOPG_SCHEME + value[len(scheme) :]
+    # The DSN may carry a password, so it is never echoed back.
+    raise ValueError("db_dsn must start with postgres://, postgresql:// or postgresql+psycopg://")
+
+
 class Settings(BaseSettings):
     # hide_input_in_errors: a bad DSN or secret must not end up in a startup error.
     model_config = SettingsConfigDict(env_prefix="AI_", extra="ignore", hide_input_in_errors=True)
@@ -30,12 +39,7 @@ class Settings(BaseSettings):
     @field_validator("db_dsn")
     @classmethod
     def _normalize_dsn(cls, value: str) -> str:
-        """Rewrites postgres:// and postgresql:// to the SQLAlchemy psycopg 3 dialect."""
-        for scheme in _DSN_SCHEMES:
-            if value.startswith(scheme):
-                return _PSYCOPG_SCHEME + value[len(scheme) :]
-        # The DSN may carry a password, so it is never echoed back.
-        raise ValueError("db_dsn must start with postgres://, postgresql:// or postgresql+psycopg://")
+        return normalize_dsn(value)
 
 
 def load_settings() -> Settings:

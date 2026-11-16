@@ -1,0 +1,16 @@
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.git
+services/ai/tests
+services/gateway
+services/auth
+services/job
+services/candidate
+gen
+pkg
+tools
+deploy
+docs
