@@ -132,6 +132,39 @@ func TestReparse_EmitsNewAttempt(t *testing.T) {
 	assert.Equal(t, domain.StatusUploading, e.cvs.m[up.ID].Status)
 }
 
+func TestReparse_StaleUploaded(t *testing.T) {
+	e := newEnv(t)
+	cv := e.uploaded(t, u1) // attempt A, its cv.uploaded may have been dead-lettered
+	attemptA := cv.AttemptID
+	n := e.ob.count()
+
+	// Still within the threshold: the attempt may be in flight.
+	e.clock.Advance(domain.StaleUploadAfter - 2*time.Second)
+	_, err := e.svc.ReparseCV(asCandidate(u1), cv.ID)
+	require.ErrorIs(t, err, apperr.ErrValidation)
+	assert.Equal(t, n, e.ob.count())
+	assert.Equal(t, cv, e.cvs.m[cv.ID])
+
+	e.clock.Advance(2 * time.Second)
+	out, err := e.svc.ReparseCV(asCandidate(u1), cv.ID)
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusUploaded, out.Status)
+	assert.NotEqual(t, attemptA, out.AttemptID)
+	assert.Equal(t, cv.Version+1, out.Version)
+	require.Equal(t, n+1, e.ob.count())
+	ev := e.ob.last()
+	assert.Equal(t, "cv.uploaded", ev.EventType)
+	var p map[string]string
+	require.NoError(t, json.Unmarshal(ev.Payload, &p))
+	assert.Equal(t, out.AttemptID, p["attempt_id"])
+
+	// A late result of attempt A is ignored; the new attempt's result applies.
+	require.NoError(t, e.svc.HandleParseResult(t.Context(), failedEvent(t, cv, attemptA, "no_text")))
+	assert.Equal(t, out, e.cvs.m[cv.ID])
+	require.NoError(t, e.svc.HandleParseResult(t.Context(), parsedEvent(t, out, out.AttemptID, fixture(t, "valid/minimal.json"))))
+	assert.Equal(t, domain.StatusParsed, e.cvs.m[cv.ID].Status)
+}
+
 func TestListMyCVs_PagesOwnOnly(t *testing.T) {
 	e := newEnv(t)
 	mine := map[uuid.UUID]bool{}

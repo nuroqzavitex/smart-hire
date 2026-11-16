@@ -108,8 +108,22 @@ class ParsedCVDraft(BaseModel):
     location: str | None
 
 
+# C0 control characters except \t \n \r: Postgres jsonb rejects \u0000 and the
+# rest is noise from PDF extraction or the LLM.
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def strip_control(value: str) -> str:
+    """Removes C0 control characters other than tab, newline and carriage return."""
+    return _CONTROL.sub("", value)
+
+
+def _text(value: str, limit: int = MAX_TEXT) -> str:
+    return strip_control(value)[:limit]
+
+
 def _clip(value: str | None, limit: int = MAX_TEXT) -> str | None:
-    return None if value is None else value[:limit]
+    return None if value is None else _text(value, limit)
 
 
 def _year_month(value: str | None) -> str | None:
@@ -123,20 +137,23 @@ def _in_range[N: (int, float)](value: N | None, lo: int, hi: int) -> N | None:
 def sanitize(draft: ParsedCVDraft) -> ParsedCV:
     """Clamps an unconstrained LLM draft into a valid ParsedCV (plan decision #3).
 
-    Over-long strings are cut, surplus list items dropped, out-of-range numbers
+    C0 control characters (except \\t \\n \\r) are removed from every string,
+    over-long strings are cut, surplus list items dropped, out-of-range numbers
     and malformed dates become None, skills are normalized. Raises
     pydantic.ValidationError only if the result still violates ParsedCV.
     """
-    languages = [lang[:MAX_LANGUAGE_LEN] for lang in (s.strip() for s in draft.languages) if lang]
+    languages = [
+        lang[:MAX_LANGUAGE_LEN] for lang in (strip_control(s).strip() for s in draft.languages) if lang
+    ]
     return ParsedCV(
         full_name=_clip(draft.full_name),
         email=_clip(draft.email, MAX_EMAIL),
-        skills=normalize(draft.skills),
+        skills=normalize([strip_control(s) for s in draft.skills]),
         years_of_experience=_in_range(draft.years_of_experience, MIN_YEARS, MAX_YEARS),
         current_title=_clip(draft.current_title),
         education=[
             Education(
-                school=draft_edu.school[:MAX_TEXT],
+                school=_text(draft_edu.school),
                 degree=_clip(draft_edu.degree),
                 major=_clip(draft_edu.major),
                 end_year=_in_range(draft_edu.end_year, MIN_END_YEAR, MAX_END_YEAR),
@@ -145,11 +162,11 @@ def sanitize(draft: ParsedCVDraft) -> ParsedCV:
         ],
         experiences=[
             Experience(
-                company=draft_exp.company[:MAX_TEXT],
-                title=draft_exp.title[:MAX_TEXT],
+                company=_text(draft_exp.company),
+                title=_text(draft_exp.title),
                 start=_year_month(draft_exp.start),
                 end=_year_month(draft_exp.end),
-                highlights=[h[:MAX_HIGHLIGHT_LEN] for h in draft_exp.highlights[:MAX_HIGHLIGHTS]],
+                highlights=[_text(h, MAX_HIGHLIGHT_LEN) for h in draft_exp.highlights[:MAX_HIGHLIGHTS]],
             )
             for draft_exp in draft.experiences[:MAX_EXPERIENCES]
         ],

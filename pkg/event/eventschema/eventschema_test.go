@@ -152,12 +152,17 @@ func TestValidate_CVRejects(t *testing.T) {
 
 func TestValidateDef_ParsedCVFixtures(t *testing.T) {
 	valid := glob(t, "valid/*.json")
-	assert.Len(t, valid, 3)
+	assert.Len(t, valid, 4)
 	for _, f := range valid {
 		assert.NoError(t, eventschema.ValidateDef("cv.parsed", "ParsedCV", read(t, f)), f)
 	}
+	// Plan decision #2 limits, shared with the Python tests.
+	assert.FileExists(t, filepath.Join(fixtureDir(t), "valid", "boundaries.json"))
+	for _, name := range []string{"education_11", "languages_21", "full_name_201", "email_255"} {
+		assert.FileExists(t, filepath.Join(fixtureDir(t), "invalid", name+".json"))
+	}
 	invalid := glob(t, "invalid/*.json")
-	assert.Len(t, invalid, 10)
+	assert.Len(t, invalid, 14)
 	for _, f := range invalid {
 		assert.Error(t, eventschema.ValidateDef("cv.parsed", "ParsedCV", read(t, f)), f)
 	}

@@ -1,0 +1,47 @@
+{
+  "full_name": "ỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄỄ",
+  "email": "nguyen.van.anh@example.com",
+  "skills": [
+    "Go",
+    "PostgreSQL",
+    "Kafka",
+    "Kubernetes",
+    "Python"
+  ],
+  "years_of_experience": 5.5,
+  "current_title": "Kỹ sư phần mềm cấp cao",
+  "education": [
+    {
+      "school": "Đại học Bách khoa Hà Nội",
+      "degree": "Kỹ sư",
+      "major": "Khoa học máy tính",
+      "end_year": 2018
+    }
+  ],
+  "experiences": [
+    {
+      "company": "Công ty Cổ phần Công nghệ Sao Việt",
+      "title": "Backend Engineer",
+      "start": "2021-03",
+      "end": null,
+      "highlights": [
+        "Thiết kế hệ thống xử lý sự kiện với Kafka, 10k msg/s",
+        "Giảm độ trễ p99 của API tìm kiếm từ 800ms xuống 120ms"
+      ]
+    },
+    {
+      "company": "FPT Software",
+      "title": "Software Engineer",
+      "start": "2018-07",
+      "end": "2021-02",
+      "highlights": [
+        "Phát triển dịch vụ thanh toán bằng Go"
+      ]
+    }
+  ],
+  "languages": [
+    "Tiếng Việt",
+    "English"
+  ],
+  "location": "Hà Nội"
+}

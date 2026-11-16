@@ -12,11 +12,14 @@ from minio import Minio
 from minio.error import S3Error
 
 from ai_service.adapters.kafka_consumer import backoff
+from ai_service.services.cv_parser import MAX_CV_BYTES
 from ai_service.services.cv_uploaded_handler import DownloadFailed, ObjectStat
 
 log = logging.getLogger(__name__)
 
 _NOT_FOUND = "NoSuchKey"
+# A ranged GET of a 0-byte object is unsatisfiable: the object is empty.
+_EMPTY_RANGE = "InvalidRange"
 # Deployment faults (wrong policy / bucket): not a per-CV problem, so no adapter
 # retry and no cv.parse_failed; the consumer retries and then dead-letters.
 _DEPLOYMENT_FAULTS = frozenset({"AccessDenied", "NoSuchBucket"})
@@ -35,6 +38,7 @@ class MinioObjectReader:
         base_s: float = 0.2,
         cap_s: float = 2.0,
         sleep: Callable[[float], None] = time.sleep,
+        max_bytes: int = MAX_CV_BYTES + 1,
     ) -> None:
         self._client = client
         self._bucket = bucket
@@ -42,6 +46,7 @@ class MinioObjectReader:
         self._base_s = base_s
         self._cap_s = cap_s
         self._sleep = sleep
+        self._max_bytes = max_bytes
 
     def stat(self, key: str) -> ObjectStat:
         def call() -> ObjectStat:
@@ -51,8 +56,20 @@ class MinioObjectReader:
         return self._with_retry(call)
 
     def get(self, key: str) -> bytes:
+        """Reads at most max_bytes (default MAX_CV_BYTES + 1).
+
+        The presigned PUT URL outlives complete, so the object may have been
+        replaced after stat; reading one byte past the limit lets the caller
+        detect an oversized object without downloading it unbounded.
+        """
+
         def call() -> bytes:
-            response = self._client.get_object(self._bucket, key)
+            try:
+                response = self._client.get_object(self._bucket, key, length=self._max_bytes)
+            except S3Error as exc:
+                if exc.code == _EMPTY_RANGE:
+                    return b""
+                raise
             try:
                 data: bytes = response.read()
             finally:

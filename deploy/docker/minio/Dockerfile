@@ -26,7 +26,6 @@ RUN cd mc \
 
 FROM debian:bookworm-slim
 COPY --from=build /out/minio /out/mc /usr/bin/
-VOLUME ["/data"]
 EXPOSE 9000 9001
 ENTRYPOINT ["/usr/bin/minio"]
 CMD ["server", "/data", "--console-address", ":9001"]

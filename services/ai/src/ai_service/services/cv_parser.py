@@ -1,6 +1,6 @@
 """CV parse use case: PDF bytes -> ParseOutcome (spec §5.3)."""
 
-from ai_service.domain.models import FailureReason, ParseFailure, ParseOutcome, ParseSuccess
+from ai_service.domain.models import FailureReason, ParseFailure, ParseOutcome, ParseSuccess, strip_control
 from ai_service.domain.skills import normalize
 from ai_service.services.ports import LlmInvalidOutput, LlmParser, LlmRefused, PdfUnreadable, TextExtractor
 
@@ -39,7 +39,8 @@ def parse_cv(data: bytes, extractor: TextExtractor, llm: LlmParser) -> ParseOutc
     except PdfUnreadable:
         return _fail("not_pdf", "pdf cannot be opened or read")
 
-    stripped = text.strip()
+    # Control characters (\u0000 breaks Postgres jsonb) never reach the LLM or the result.
+    stripped = strip_control(text).strip()
     text_chars = len(stripped)
     if text_chars < MIN_TEXT_CHARS:
         return _fail("no_text", "pdf has no extractable text", text_chars=text_chars)

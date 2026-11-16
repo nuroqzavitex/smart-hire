@@ -19,6 +19,13 @@ const (
 
 const maxFileNameRunes = 255
 
+// StaleUploadAfter is how long a CV may wait in UPLOADED for the current
+// attempt's result before the candidate may reparse it. It exceeds the AI
+// worker's max.poll.interval.ms (900s), so an attempt still being processed
+// is not restarted; past it the cv.uploaded or result event was most likely
+// dead-lettered and the CV would otherwise stay UPLOADED forever.
+const StaleUploadAfter = 15 * time.Minute
+
 // Status is the lifecycle state of a CV.
 type Status string
 
@@ -122,8 +129,16 @@ func (c *CV) UpdateParsed(parsed json.RawMessage, now time.Time) error {
 }
 
 // Reparse discards the previous result and starts parse attempt attemptID.
+// It is allowed from PARSED and FAILED, and from UPLOADED once the current
+// attempt (started at UpdatedAt) is at least StaleUploadAfter old.
 func (c *CV) Reparse(attemptID string, now time.Time) error {
-	if c.Status != StatusParsed && c.Status != StatusFailed {
+	switch c.Status {
+	case StatusParsed, StatusFailed:
+	case StatusUploaded:
+		if now.Sub(c.UpdatedAt) < StaleUploadAfter {
+			return ErrInvalidTransition
+		}
+	default:
 		return ErrInvalidTransition
 	}
 	c.Status = StatusUploaded

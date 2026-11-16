@@ -11,6 +11,7 @@ from ai_service.domain.models import (
     ParseFailure,
     ParseSuccess,
     sanitize,
+    strip_control,
 )
 
 
@@ -150,6 +151,37 @@ def test_sanitize_clamps_lists_and_nested_fields() -> None:
     assert len(p.languages) == 20
     assert all(0 < len(lang) <= 50 for lang in p.languages)
     assert p.languages[0] == "Vietnamese"
+
+
+def test_sanitize_strips_control_chars() -> None:
+    # Postgres jsonb rejects \u0000; other C0 controls are noise. \t \n \r are kept.
+    bad = "\x00A\x01\x08\x0b\x0c\x0e\x1f\tB\nC\r"
+    d = ParsedCVDraft(
+        full_name=bad,
+        email=bad,
+        skills=["\x00golang\x07"],
+        years_of_experience=None,
+        current_title=bad,
+        education=[EducationDraft(school=bad, degree=bad, major=bad, end_year=None)],
+        experiences=[ExperienceDraft(company=bad, title=bad, start=None, end=None, highlights=[bad])],
+        languages=[bad, "\x00\x01"],
+        location=bad,
+    )
+    p = sanitize(d)
+    dumped = p.model_dump_json()
+    for code in [*range(0x00, 0x09), 0x0B, 0x0C, *range(0x0E, 0x20)]:
+        assert f"\\u{code:04x}" not in dumped, f"U+{code:04X} survived"
+    want = "A\tB\nC\r"
+    assert p.full_name == p.email == p.current_title == p.location == want
+    assert p.education[0].school == p.education[0].degree == p.education[0].major == want
+    assert p.experiences[0].company == p.experiences[0].title == want
+    assert p.experiences[0].highlights == [want]
+    assert p.skills == ["Go"]
+    assert p.languages == ["A\tB\nC"]  # stripped, and the all-control entry dropped
+
+
+def test_strip_control() -> None:
+    assert strip_control("a\x00b\x1fc\x7f\t\n\r") == "abc\x7f\t\n\r"
 
 
 def test_sanitize_keeps_valid_values() -> None:

@@ -6,7 +6,12 @@ from datetime import UTC, datetime
 
 import pytest
 from opentelemetry.context import Context
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import StatusCode
 
+from ai_service.adapters import kafka_consumer
 from ai_service.adapters.kafka_consumer import DlqWriteError, RetryingConsumer, backoff, dlq_headers
 from ai_service.domain.events import Envelope
 from ai_service.services.cv_uploaded_handler import PermanentError
@@ -213,3 +218,75 @@ def test_run_processes_until_stop():
     s.rc.run()
     assert s.calls == 2
     assert len(s.consumer.commits) == 2
+
+
+def test_shutdown_before_permanent_error_does_not_commit_or_dlq():
+    # Like Go: shutdown is checked before classifying any handler error.
+    def handler(s: Setup, env: Envelope) -> None:
+        s.stop.set()
+        raise PermanentError("bad")
+
+    s = Setup(handler)
+    assert s.rc.process(FakeMessage(_envelope_bytes())) is False
+    assert s.consumer.commits == []
+    assert s.dlq.records == []
+
+
+@pytest.fixture
+def spans(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(kafka_consumer.trace, "get_tracer", provider.get_tracer)
+    return exporter
+
+
+def _raise_permanent(s: Setup, env: Envelope) -> None:
+    raise PermanentError("cv.uploaded payload failed validation")
+
+
+def _raise_runtime(s: Setup, env: Envelope) -> None:
+    raise RuntimeError("boom")
+
+
+PII_EMAIL = "nguyen.secret@example.com"
+
+
+@pytest.mark.parametrize(
+    ("value", "handler", "reason"),
+    [
+        (json.dumps({"event_id": 1, "email": PII_EMAIL}).encode(), _ok, "decode"),
+        (_envelope_bytes(), _raise_permanent, "permanent"),
+        (_envelope_bytes(), _raise_runtime, "exhausted"),
+    ],
+)
+def test_dlq_span_records_error(
+    spans: InMemorySpanExporter, value: bytes, handler: Callable[[Setup, Envelope], None], reason: str
+):
+    s = Setup(handler)
+    assert s.rc.process(FakeMessage(value)) is True
+    (span,) = spans.get_finished_spans()
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.status.description == f"dead-lettered: {reason}"
+    assert span.attributes is not None
+    assert span.attributes["smarthire.dlq"] is True
+    assert span.attributes["smarthire.dlq.reason"] == reason
+    (event,) = [e for e in span.events if e.name == "exception"]
+    assert event.attributes is not None
+    assert event.attributes["exception.message"] == s.dlq.records[0][3]["dlq-error"]
+    assert all(PII_EMAIL not in str(v) for v in event.attributes.values())
+
+
+def test_dlq_write_failure_records_error_and_status(spans: InMemorySpanExporter):
+    s = Setup(_raise_permanent, dlq=FakePublisher(fail=True))
+    with pytest.raises(DlqWriteError):
+        s.rc.process(FakeMessage(_envelope_bytes()))
+    (span,) = spans.get_finished_spans()
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.attributes is not None
+    assert "smarthire.dlq" not in span.attributes
+    messages = [e.attributes["exception.message"] for e in span.events if e.attributes]
+    assert messages[:2] == [
+        "PermanentError: cv.uploaded payload failed validation",
+        "dlq write failed: RuntimeError",
+    ]

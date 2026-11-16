@@ -41,6 +41,7 @@ jobs:
               - 'services/job/**'
             candidate:
               - 'services/candidate/**'
+              - 'deploy/docker/minio/**'
             tools:
               - 'tools/**'
       # Changes in pkg/, gen/ (or the workspace) run every module.

@@ -131,3 +131,26 @@ def test_parse_cv_normalizes_llm_skills() -> None:
 def test_parse_cv_unexpected_error_propagates() -> None:
     with pytest.raises(ConnectionError):
         parse_cv(pdf(CV_LINES), ext, RaisingLlm(ConnectionError()))
+
+
+class TextExtractor:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def extract(self, data: bytes) -> str:
+        return self.text
+
+
+def test_parse_cv_strips_control_chars_from_text() -> None:
+    # Postgres jsonb rejects \u0000; C0 controls other than \t \n \r are dropped.
+    text = "\x00Nguyen Van Nam\x01\nSkills: golang\x0b, k8s\t\r\n" + "x\x00" * 60
+    out = parse_cv(b"%PDF-1.7", TextExtractor(text), RecordingLlm())
+    assert isinstance(out, ParseSuccess)
+    assert RecordingLlm.last_text == "Nguyen Van Nam\nSkills: golang, k8s\t\r\n" + "x" * 60
+    assert out.text_chars == len(RecordingLlm.last_text)
+    assert "\\u0000" not in out.parsed.model_dump_json()
+
+
+def test_parse_cv_control_chars_do_not_count_as_text(fake_llm: FakeLlmParser) -> None:
+    out = parse_cv(b"%PDF-1.7", TextExtractor("\x00" * 100 + "short"), fake_llm)
+    assert isinstance(out, ParseFailure) and out.reason == "no_text"

@@ -12,7 +12,7 @@ from typing import Any, Protocol
 
 import confluent_kafka
 from opentelemetry import propagate, trace
-from opentelemetry.trace import Span, SpanKind
+from opentelemetry.trace import Span, SpanKind, Status, StatusCode
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -25,6 +25,11 @@ GROUP_ID = "ai-cv-parser"
 DLQ_ERROR_MAX = 512
 POLL_TIMEOUT_S = 1.0
 _DLQ_PREFIX = "dlq-"
+
+# Values of the smarthire.dlq.reason span attribute (same as Go pkg/kafka).
+DLQ_REASON_DECODE = "decode"
+DLQ_REASON_PERMANENT = "permanent"
+DLQ_REASON_EXHAUSTED = "exhausted"
 
 
 def backoff(attempt: int, base_s: float = 0.2, cap_s: float = 2.0) -> float:
@@ -131,9 +136,11 @@ class RetryingConsumer:
                 env = Envelope.model_validate_json(msg.value() or b"")
                 if not env.event_id or not env.event_type:
                     raise ValueError("empty event_id or event_type")
-            except (ValidationError, ValueError):
+            except (ValidationError, ValueError) as exc:
                 self._log.warning("undecodable event", extra={"offset": msg.offset()})
-                return self._dead_letter(msg, raw_headers, span, "undecodable event envelope", 0, "poison")
+                return self._dead_letter(
+                    msg, raw_headers, span, exc, "undecodable event envelope", 0, DLQ_REASON_DECODE
+                )
             return self._handle_with_retry(msg, raw_headers, span, env)
 
     def _handle_with_retry(
@@ -144,18 +151,23 @@ class RetryingConsumer:
             attempts += 1
             try:
                 self._handler(env)
-            except PermanentError as exc:
-                self._log.warning("permanent error", extra={"event_id": env.event_id})
-                return self._dead_letter(msg, raw_headers, span, _describe(exc), attempts, "permanent")
             except Exception as exc:
+                # Like Go: shutdown is checked first for every handler error.
                 if self._stop.is_set():
                     return False
+                if isinstance(exc, PermanentError):
+                    self._log.warning("permanent error", extra={"event_id": env.event_id})
+                    return self._dead_letter(
+                        msg, raw_headers, span, exc, _describe(exc), attempts, DLQ_REASON_PERMANENT
+                    )
                 self._log.warning(
                     "handler failed",
                     extra={"event_id": env.event_id, "attempt": attempts, "error_type": type(exc).__name__},
                 )
                 if attempts >= self._max_attempts:
-                    return self._dead_letter(msg, raw_headers, span, _describe(exc), attempts, "exhausted")
+                    return self._dead_letter(
+                        msg, raw_headers, span, exc, _describe(exc), attempts, DLQ_REASON_EXHAUSTED
+                    )
                 if self._stop.wait(backoff(attempts, self._base_s, self._cap_s)):
                     return False
             else:
@@ -167,10 +179,14 @@ class RetryingConsumer:
         msg: MessageLike,
         raw_headers: list[tuple[str, bytes]],
         span: Span,
+        cause: Exception,
         error: str,
         attempts: int,
         reason: str,
     ) -> bool:
+        """Records the failure on the process span (like Go toDLQ) and writes the DLQ record."""
+        _record(span, cause, error)
+        span.set_status(Status(StatusCode.ERROR, f"dead-lettered: {reason}"))
         headers = dlq_headers(
             raw_headers,
             topic=msg.topic(),
@@ -189,6 +205,7 @@ class RetryingConsumer:
         except Exception as exc:
             if self._stop.is_set():
                 return False
+            _record(span, exc, f"dlq write failed: {type(exc).__name__}")
             self._log.error("dlq write failed", extra={"error_type": type(exc).__name__})
             raise DlqWriteError("failed to write to the dead-letter topic") from None
         span.set_attribute("smarthire.dlq", True)
@@ -198,6 +215,15 @@ class RetryingConsumer:
 
     def _commit(self, msg: MessageLike) -> None:
         self._consumer.commit(message=msg, asynchronous=False)
+
+
+def _record(span: Span, exc: BaseException, message: str) -> None:
+    """record_exception with the PII-safe message (the dlq-error text) in place of
+    str(exc) and the traceback, both of which may echo payload values."""
+    span.record_exception(
+        exc,
+        attributes={"exception.message": message, "exception.stacktrace": f"{type(exc).__name__}: {message}"},
+    )
 
 
 def _as_mapping(headers: Sequence[tuple[str, bytes]]) -> Mapping[str, str]:

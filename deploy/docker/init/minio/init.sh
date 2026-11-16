@@ -12,9 +12,11 @@ mc anonymous set none local/cvs
 setup_user() {
   mc admin policy create local "$1" "/init/$1.json"
   mc admin user add local "$2" "$3"
-  # attach fails when the policy is already attached; accept that on re-runs.
+  # attach may fail when the policy is already attached; accept that on re-runs
+  # only if the user really has it. Match the PolicyName line (a comma-separated
+  # list), not the whole output: the AccessKey line can equal the policy name.
   mc admin policy attach local "$1" --user "$2" \
-    || mc admin user info local "$2" | grep -q "$1"
+    || mc admin user info local "$2" | grep -Eq "^PolicyName:[[:space:]]*([^,]*,)*$1(,|$)"
 }
 
 setup_user candidate-svc "$CANDIDATE_S3_ACCESS_KEY" "$CANDIDATE_S3_SECRET_KEY"

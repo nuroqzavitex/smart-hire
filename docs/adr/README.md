@@ -14,6 +14,8 @@ Mỗi ADR ghi một quyết định kiến trúc theo khuôn: **Context / Decisi
 | [0004](0004-refresh-token-rotation.md) | Refresh token rotation + phát hiện dùng lại | M0 |
 | [0005](0005-outbox-relay-headers.md) | Outbox relay trong process + cột `headers` | M1a |
 | [0006](0006-kafka-client-retry-dlq.md) | Kafka client (franz-go) + retry in-process + DLQ | M1a |
+| [0007](0007-ai-service-python-llm-port.md) | AI service bằng Python + cổng `LlmParser` | M1b |
+| [0008](0008-presigned-upload-valet-key.md) | Upload CV bằng presigned URL (valet key) + MinIO | M1b |
 
 ## Chủ đề dự kiến (chưa có số)
 

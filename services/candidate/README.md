@@ -44,7 +44,7 @@ Every RPC requires a `candidate` token; there are no public methods (besides gRP
 | `GetCV` | `GET /v1/cvs/{id}` | owner only (others get 404) |
 | `ListMyCVs` | `GET /v1/cvs` | newest first, `page_size` default 20, max 50 |
 | `UpdateParsedData` | `PATCH /v1/cvs/{id}/parsed` | `PARSED` only; body validated against `cv.parsed#/$defs/ParsedCV` |
-| `ReparseCV` | `POST /v1/cvs/{id}:reparse` | from `PARSED`/`FAILED`; new `attempt_id`, emits `cv.uploaded` |
+| `ReparseCV` | `POST /v1/cvs/{id}:reparse` | from `PARSED`/`FAILED`, or `UPLOADED` once the current attempt is ≥ 15 min old (stuck after a DLQ, ADR 0008); new `attempt_id`, emits `cv.uploaded` |
 
 A CV response never contains the storage object key or a download URL.
 

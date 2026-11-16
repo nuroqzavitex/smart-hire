@@ -1,0 +1,66 @@
+{
+  "full_name": "Nguyễn Văn Anh",
+  "email": "nguyen.van.anh@example.com",
+  "skills": [
+    "Go",
+    "PostgreSQL",
+    "Kafka",
+    "Kubernetes",
+    "Python"
+  ],
+  "years_of_experience": 5.5,
+  "current_title": "Kỹ sư phần mềm cấp cao",
+  "education": [
+    {
+      "school": "Đại học Bách khoa Hà Nội",
+      "degree": "Kỹ sư",
+      "major": "Khoa học máy tính",
+      "end_year": 2018
+    }
+  ],
+  "experiences": [
+    {
+      "company": "Công ty Cổ phần Công nghệ Sao Việt",
+      "title": "Backend Engineer",
+      "start": "2021-03",
+      "end": null,
+      "highlights": [
+        "Thiết kế hệ thống xử lý sự kiện với Kafka, 10k msg/s",
+        "Giảm độ trễ p99 của API tìm kiếm từ 800ms xuống 120ms"
+      ]
+    },
+    {
+      "company": "FPT Software",
+      "title": "Software Engineer",
+      "start": "2018-07",
+      "end": "2021-02",
+      "highlights": [
+        "Phát triển dịch vụ thanh toán bằng Go"
+      ]
+    }
+  ],
+  "languages": [
+    "Lang 0",
+    "Lang 1",
+    "Lang 2",
+    "Lang 3",
+    "Lang 4",
+    "Lang 5",
+    "Lang 6",
+    "Lang 7",
+    "Lang 8",
+    "Lang 9",
+    "Lang 10",
+    "Lang 11",
+    "Lang 12",
+    "Lang 13",
+    "Lang 14",
+    "Lang 15",
+    "Lang 16",
+    "Lang 17",
+    "Lang 18",
+    "Lang 19",
+    "Lang 20"
+  ],
+  "location": "Hà Nội"
+}

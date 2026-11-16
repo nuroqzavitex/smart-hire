@@ -82,6 +82,13 @@ def test_cv_uploaded_payload_matches_contract(contracts_dir: Path) -> None:
     _validator(payload_schema).validate(_cv().model_dump(mode="json"))
 
 
+def test_parsed_cv_limit_fixtures_present(contracts_dir: Path) -> None:
+    # Plan decision #2 limits, shared with the Go eventschema tests.
+    names = {kind: {p.stem for p in _fixture_files(contracts_dir, kind)} for kind in ("valid", "invalid")}
+    assert "boundaries" in names["valid"]
+    assert {"education_11", "languages_21", "full_name_201", "email_255"} <= names["invalid"]
+
+
 @pytest.mark.parametrize("kind", ["valid", "invalid"])
 def test_parsed_cv_fixtures_agree_with_contract(contracts_dir: Path, kind: str) -> None:
     validator = _parsed_cv_validator(contracts_dir)

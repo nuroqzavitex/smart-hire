@@ -133,6 +133,18 @@ def test_handler_too_large_skips_download():
     assert storage.gets == 0
 
 
+def test_handler_object_grown_after_stat_is_too_large():
+    # The presigned PUT URL outlives complete: the object can be replaced
+    # between stat and get, so the downloaded size is checked again.
+    storage = FakeStorage(b"%PDF-" + b"x" * MAX_CV_BYTES, size=1024)
+    store = FakeStore()
+    CountingLlm.calls = 0
+    _handler(storage, store).handle(_env(_payload()))
+    outcome = store.commits[0][2]
+    assert isinstance(outcome, ParseFailure) and outcome.reason == "too_large"
+    assert storage.gets == 1 and CountingLlm.calls == 0
+
+
 def test_handler_download_failed_emits_failure():
     store = FakeStore()
     _handler(FakeStorage(fail=True), store).handle(_env(_payload()))
@@ -183,6 +195,7 @@ class FakeMinio:
         self.errors = errors
         self.calls = 0
         self.data = data
+        self.lengths: list[int] = []
 
     def _maybe_fail(self) -> None:
         self.calls += 1
@@ -193,9 +206,11 @@ class FakeMinio:
         self._maybe_fail()
         return SimpleNamespace(size=len(self.data), content_type="application/pdf")
 
-    def get_object(self, bucket: str, key: str) -> FakeResponse:
+    def get_object(self, bucket: str, key: str, offset: int = 0, length: int = 0) -> FakeResponse:
         self._maybe_fail()
-        return FakeResponse(self.data)
+        self.lengths.append(length)
+        # Like S3 with a Range header: at most `length` bytes come back.
+        return FakeResponse(self.data[offset : offset + length] if length else self.data)
 
 
 def _reader(client: FakeMinio, sleeps: list[float]) -> MinioObjectReader:
@@ -240,3 +255,18 @@ def test_minio_reader_5xx_retries_then_download_failed():
         _reader(client, sleeps).stat("cvs/a/b.pdf")
     assert client.calls == 3 and sleeps == [0.2, 0.4]
     assert "secret-key" not in str(exc.value)
+
+
+def test_minio_reader_get_reads_at_most_limit_plus_one():
+    client = FakeMinio([], data=b"%PDF-" + b"x" * (MAX_CV_BYTES + 100))
+    data = _reader(client, []).get("cvs/a/b.pdf")
+    assert client.lengths == [MAX_CV_BYTES + 1]
+    assert len(data) == MAX_CV_BYTES + 1
+
+
+def test_minio_reader_get_empty_object_invalid_range():
+    # A ranged GET of a 0-byte object fails with InvalidRange (416): the object is empty.
+    sleeps: list[float] = []
+    client = FakeMinio([_s3("InvalidRange", 416)])
+    assert _reader(client, sleeps).get("cvs/a/b.pdf") == b""
+    assert client.calls == 1 and sleeps == []

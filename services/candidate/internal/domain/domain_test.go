@@ -186,6 +186,43 @@ func TestReparse_ClearsResultAndSetsAttempt(t *testing.T) {
 	}
 }
 
+func TestReparse_StaleUploaded(t *testing.T) {
+	// cvIn completes at t0, so UpdatedAt = t0 for the current attempt "A".
+	t.Run("before threshold is rejected", func(t *testing.T) {
+		cv := cvIn(t, domain.StatusUploaded)
+		before := cv
+		err := cv.Reparse("R", t0.Add(domain.StaleUploadAfter-time.Second)) // 14:59
+		require.ErrorIs(t, err, domain.ErrInvalidTransition)
+		assert.ErrorIs(t, err, apperr.ErrValidation)
+		assert.Equal(t, before, cv)
+	})
+	for _, age := range []time.Duration{domain.StaleUploadAfter, domain.StaleUploadAfter + time.Second, time.Hour} {
+		t.Run("after "+age.String()+" is allowed", func(t *testing.T) {
+			cv := cvIn(t, domain.StatusUploaded)
+			now := t0.Add(age)
+			require.NoError(t, cv.Reparse("R", now))
+			assert.Equal(t, domain.StatusUploaded, cv.Status)
+			assert.Equal(t, "R", cv.AttemptID)
+			assert.Equal(t, now, cv.UpdatedAt)
+			assert.Equal(t, int64(3), cv.Version)
+			// The late result of the dead-lettered attempt is stale.
+			require.ErrorIs(t, cv.ApplyParsed("A", sampleParsed, now), domain.ErrStaleResult)
+			require.NoError(t, cv.ApplyParsed("R", sampleParsed, now))
+		})
+	}
+	t.Run("threshold restarts with the new attempt", func(t *testing.T) {
+		cv := cvIn(t, domain.StatusUploaded)
+		now := t0.Add(domain.StaleUploadAfter)
+		require.NoError(t, cv.Reparse("R", now))
+		require.ErrorIs(t, cv.Reparse("S", now.Add(domain.StaleUploadAfter-time.Second)), domain.ErrInvalidTransition)
+	})
+	t.Run("uploading is never reparsable", func(t *testing.T) {
+		cv := cvIn(t, domain.StatusUploading)
+		require.ErrorIs(t, cv.Reparse("R", t0.Add(time.Hour)), domain.ErrInvalidTransition)
+	})
+	assert.Equal(t, 15*time.Minute, domain.StaleUploadAfter)
+}
+
 func TestNewCV_FileName(t *testing.T) {
 	id, cand := uuid.New(), uuid.New()
 	for _, name := range []string{"", "   ", strings.Repeat("a", 256)} {

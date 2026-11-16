@@ -18,6 +18,8 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from confluent_kafka.admin import AdminClient, NewTopic
+from minio.credentials import StaticProvider
+from minio.minioadmin import MinioAdmin
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -53,6 +55,7 @@ MINIO_USER, MINIO_PASSWORD = "minioadmin", "minioadmin-secret"
 BUCKET = "cvs"
 TOPICS = ["cv.uploaded", "cv.parsed", "cv.parse_failed", "relay.test"]
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
+AI_SVC_POLICY = Path(__file__).resolve().parents[4] / "deploy" / "docker" / "init" / "minio" / "ai-svc.json"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -148,14 +151,33 @@ def kafka() -> Iterator[Kafka]:
 
 
 @pytest.fixture(scope="session")
-def minio_client() -> Iterator[Any]:
+def minio_container() -> Iterator[MinioContainer]:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
         container = MinioContainer(MINIO_IMAGE, access_key=MINIO_USER, secret_key=MINIO_PASSWORD)
     with container as mc:
-        client = mc.get_client()
-        client.make_bucket(BUCKET)
-        yield client
+        mc.get_client().make_bucket(BUCKET)
+        yield mc
+
+
+@pytest.fixture(scope="session")
+def minio_client(minio_container: MinioContainer) -> Any:
+    """Root client: test setup only (puts objects)."""
+    return minio_container.get_client()
+
+
+@pytest.fixture(scope="session")
+def ai_svc_credentials(minio_container: MinioContainer) -> tuple[str, str]:
+    """A least-privilege user with the repo's ai-svc policy, as minio-init sets it up."""
+    endpoint = minio_container.get_config()["endpoint"]
+    admin = MinioAdmin(
+        endpoint=endpoint, credentials=StaticProvider(MINIO_USER, MINIO_PASSWORD), secure=False
+    )
+    access, secret = "ai-svc-test", "ai-svc-test-secret"
+    admin.policy_add("ai-svc", policy_file=str(AI_SVC_POLICY))
+    admin.user_add(access, secret)
+    admin.attach_policy(["ai-svc"], user=access)
+    return access, secret
 
 
 @pytest.fixture
