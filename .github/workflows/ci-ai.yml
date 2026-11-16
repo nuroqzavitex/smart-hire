@@ -1,0 +1,41 @@
+name: ci-ai
+on:
+  pull_request:
+    paths: ["services/ai/**", "contracts/events/**", "deploy/docker/minio/**", ".github/workflows/ci-ai.yml"]
+  push:
+    branches: [main]
+    paths: ["services/ai/**", "contracts/events/**", "deploy/docker/minio/**", ".github/workflows/ci-ai.yml"]
+permissions: { contents: read }
+concurrency: { group: "ci-ai-${{ github.ref }}", cancel-in-progress: true }
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/ai } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.9.5", enable-cache: true, cache-dependency-glob: "services/ai/uv.lock" }
+      - run: uv python install 3.12
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy src
+      # Integration tests use the locally built MinIO image (ADR 0008, E-R4).
+      - uses: docker/setup-buildx-action@v3
+      - name: Build MinIO test image
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy/docker/minio
+          load: true
+          push: false
+          tags: smarthire/minio:RELEASE.2025-04-22T22-12-26Z
+          cache-from: type=gha,scope=minio
+          cache-to: type=gha,mode=max,scope=minio
+      - run: uv run pytest -m "integration or not integration" --cov=ai_service --cov-report=term --cov-fail-under=70 tests
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with: { context: ., file: services/ai/Dockerfile, push: false, cache-from: "type=gha,scope=ai", cache-to: "type=gha,mode=max,scope=ai" }

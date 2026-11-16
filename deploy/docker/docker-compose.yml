@@ -92,6 +92,105 @@ services:
     # `make up` waits until GET /v1/jobs succeeds end to end.
     restart: unless-stopped
 
+  candidate-migrate:
+    image: migrate/migrate:v4.18.3
+    command:
+      - -path=/migrations
+      - -database=postgres://candidate_svc:${CANDIDATE_DB_PASSWORD:?set CANDIDATE_DB_PASSWORD in .env}@postgres:5432/candidate_db?sslmode=disable
+      - up
+    volumes:
+      - ../../services/candidate/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  candidate:
+    build:
+      context: ../..
+      dockerfile: services/candidate/Dockerfile
+    image: smarthire/candidate:dev
+    environment:
+      CANDIDATE_DB_DSN: postgres://candidate_svc:${CANDIDATE_DB_PASSWORD:?set CANDIDATE_DB_PASSWORD in .env}@postgres:5432/candidate_db?sslmode=disable
+      CANDIDATE_JWKS_URL: http://auth:8001/.well-known/jwks.json
+      CANDIDATE_KAFKA_BROKERS: redpanda:9092
+      CANDIDATE_S3_ENDPOINT: minio:9000
+      # Host that clients reach MinIO at; used only to sign upload URLs.
+      CANDIDATE_S3_PUBLIC_ENDPOINT: http://127.0.0.1:9000
+      CANDIDATE_S3_ACCESS_KEY: ${CANDIDATE_S3_ACCESS_KEY:?set CANDIDATE_S3_ACCESS_KEY in .env}
+      CANDIDATE_S3_SECRET_KEY: ${CANDIDATE_S3_SECRET_KEY:?set CANDIDATE_S3_SECRET_KEY in .env}
+      CANDIDATE_LOG_LEVEL: info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      candidate-migrate:
+        condition: service_completed_successfully
+      topics-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      auth:
+        condition: service_started
+    # Distroless image: no shell for a healthcheck; `make up` waits on
+    # GET /v1/cvs through the gateway.
+    restart: unless-stopped
+
+  ai-migrate:
+    build:
+      context: ../..
+      dockerfile: services/ai/Dockerfile
+    image: smarthire/ai:dev
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      AI_DB_DSN: postgresql+psycopg://ai_svc:${AI_DB_PASSWORD:?set AI_DB_PASSWORD in .env}@postgres:5432/ai_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  ai-worker:
+    build:
+      context: ../..
+      dockerfile: services/ai/Dockerfile
+    image: smarthire/ai:dev
+    command: ["ai-worker"]
+    environment:
+      AI_DB_DSN: postgresql+psycopg://ai_svc:${AI_DB_PASSWORD:?set AI_DB_PASSWORD in .env}@postgres:5432/ai_db
+      AI_KAFKA_BROKERS: redpanda:9092
+      AI_S3_ENDPOINT: minio:9000
+      AI_S3_ACCESS_KEY: ${AI_S3_ACCESS_KEY:?set AI_S3_ACCESS_KEY in .env}
+      AI_S3_SECRET_KEY: ${AI_S3_SECRET_KEY:?set AI_S3_SECRET_KEY in .env}
+      # fake = rule-based parser, no network. Set anthropic + ANTHROPIC_API_KEY in .env for real Claude.
+      AI_LLM_PROVIDER: ${AI_LLM_PROVIDER:-fake}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      ai-migrate:
+        condition: service_completed_successfully
+      topics-init:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  ai-api:
+    image: smarthire/ai:dev
+    command: ["ai-api"]
+    environment:
+      AI_DB_DSN: postgresql+psycopg://ai_svc:${AI_DB_PASSWORD:?set AI_DB_PASSWORD in .env}@postgres:5432/ai_db
+      # Required by Settings; the API itself never reads objects.
+      AI_S3_ACCESS_KEY: ${AI_S3_ACCESS_KEY:?set AI_S3_ACCESS_KEY in .env}
+      AI_S3_SECRET_KEY: ${AI_S3_SECRET_KEY:?set AI_S3_SECRET_KEY in .env}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/readyz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    depends_on:
+      ai-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   gateway:
     build:
       context: ../..
@@ -100,6 +199,7 @@ services:
     environment:
       GATEWAY_AUTH_GRPC_ADDR: auth:9001
       GATEWAY_JOB_GRPC_ADDR: job:9002
+      GATEWAY_CANDIDATE_GRPC_ADDR: candidate:9003
       GATEWAY_AUTH_JWKS_URL: http://auth:8001/.well-known/jwks.json
       GATEWAY_REDIS_ADDR: redis:6379
       GATEWAY_COOKIE_SECURE: "false"
@@ -112,6 +212,8 @@ services:
       auth:
         condition: service_started
       job:
+        condition: service_started
+      candidate:
         condition: service_started
       redis:
         condition: service_healthy

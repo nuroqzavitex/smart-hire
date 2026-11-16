@@ -34,6 +34,7 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "secret-value" not in repr(s)
     assert s.s3_bucket == "cvs"
     assert s.s3_secure is False
+    assert s.s3_region == "us-east-1"
     assert s.http_port == 8100
     assert s.outbox_interval_ms == 500
     assert s.log_level == "INFO"

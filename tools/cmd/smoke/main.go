@@ -1,5 +1,5 @@
 // Command smoke drives the full auth flow (M0 design spec §6.3, plus a check
-// that user.registered reaches Kafka) and the job flow (M1a design spec §7)
+// that user.registered reaches Kafka) the job flow (M1a design spec §7) and the CV flow (M1b)
 // through a running gateway, and exits non-zero on the first failing step.
 //
 // Cookies are sent by hand instead of through a cookiejar so that an old
@@ -39,6 +39,9 @@ type smoke struct {
 
 	recruiterEmail    string
 	recruiterPassword string
+
+	candidateEmail    string
+	candidatePassword string
 }
 
 type namedStep struct {
@@ -58,6 +61,8 @@ func main() {
 	kafka := flag.String("kafka", "127.0.0.1:19092", "Kafka (Redpanda) dev listener")
 	recruiterEmail := flag.String("recruiter-email", "recruiter@smarthire.local", "seeded recruiter email")
 	recruiterPassword := flag.String("recruiter-password", "Password123!", "seeded recruiter password")
+	candidateEmail := flag.String("candidate-email", "candidate@smarthire.local", "seeded candidate email")
+	candidatePassword := flag.String("candidate-password", "Password123!", "seeded candidate password")
 	flag.Parse()
 
 	s := &smoke{
@@ -66,6 +71,8 @@ func main() {
 		kafka:             *kafka,
 		recruiterEmail:    *recruiterEmail,
 		recruiterPassword: *recruiterPassword,
+		candidateEmail:    *candidateEmail,
+		candidatePassword: *candidatePassword,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -104,6 +111,7 @@ func (s *smoke) run() error {
 		{"login logout refresh", s.loginLogoutRefresh},
 	}
 	steps = append(steps, s.jobSteps()...)
+	steps = append(steps, s.cvSteps()...)
 	for _, st := range steps {
 		if err := step(st.name, st.fn); err != nil {
 			return err

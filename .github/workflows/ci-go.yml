@@ -39,6 +39,8 @@ jobs:
               - 'services/gateway/**'
             job:
               - 'services/job/**'
+            candidate:
+              - 'services/candidate/**'
             tools:
               - 'tools/**'
       # Changes in pkg/, gen/ (or the workspace) run every module.
@@ -49,6 +51,7 @@ jobs:
           AUTH: ${{ steps.filter.outputs.auth }}
           GATEWAY: ${{ steps.filter.outputs.gateway }}
           JOB: ${{ steps.filter.outputs.job }}
+          CANDIDATE: ${{ steps.filter.outputs.candidate }}
           TOOLS: ${{ steps.filter.outputs.tools }}
         run: |
           mods=()
@@ -56,6 +59,7 @@ jobs:
           if [ "$SHARED" = "true" ] || [ "$AUTH" = "true" ]; then mods+=(services/auth); fi
           if [ "$SHARED" = "true" ] || [ "$GATEWAY" = "true" ]; then mods+=(services/gateway); fi
           if [ "$SHARED" = "true" ] || [ "$JOB" = "true" ]; then mods+=(services/job); fi
+          if [ "$SHARED" = "true" ] || [ "$CANDIDATE" = "true" ]; then mods+=(services/candidate); fi
           if [ "$SHARED" = "true" ] || [ "$TOOLS" = "true" ]; then mods+=(tools); fi
           if [ ${#mods[@]} -eq 0 ]; then
             json='[]'
@@ -85,6 +89,19 @@ jobs:
       - name: Unit tests
         working-directory: ${{ matrix.module }}
         run: go test -race ./...
+      # Candidate integration tests run the locally built MinIO image (ADR 0008, E-R4).
+      - uses: docker/setup-buildx-action@v3
+        if: matrix.module == 'services/candidate'
+      - name: Build MinIO test image
+        if: matrix.module == 'services/candidate'
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy/docker/minio
+          load: true
+          push: false
+          tags: smarthire/minio:RELEASE.2025-04-22T22-12-26Z
+          cache-from: type=gha,scope=minio
+          cache-to: type=gha,mode=max,scope=minio
       - name: Integration tests
         if: startsWith(matrix.module, 'services/') || matrix.module == 'pkg'
         working-directory: ${{ matrix.module }}
@@ -95,6 +112,9 @@ jobs:
       - name: Coverage gate (job)
         if: matrix.module == 'services/job'
         run: make cover-job
+      - name: Coverage gate (candidate)
+        if: matrix.module == 'services/candidate'
+        run: make cover-candidate
 
   docker:
     needs: changes
@@ -103,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [auth, gateway, job]
+        service: [auth, gateway, job, candidate]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3

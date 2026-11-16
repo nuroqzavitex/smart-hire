@@ -71,6 +71,7 @@ def _run(settings: Settings) -> int:
                 access_key=settings.s3_access_key,
                 secret_key=settings.s3_secret_key.get_secret_value(),
                 secure=settings.s3_secure,
+                region=settings.s3_region,
             ),
             settings.s3_bucket,
         )

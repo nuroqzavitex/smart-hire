@@ -1,4 +1,4 @@
-.PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job \
+.PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job cover-candidate \
 	ai-sync ai-lint ai-test ai-test-int ai-cover minio-image infra-up obs-up up down down-v migrate seed smoke logs
 
 # Compose stack (deploy/docker), project name smarthire. Paths are absolute
@@ -65,6 +65,10 @@ cover-job:
 	cd services/job && go test -coverprofile=coverage.out ./internal/domain/... ./internal/app/... && \
 		go tool cover -func=coverage.out | awk '/^total:/ { sub("%","",$$3); printf "total coverage: %s%%\n", $$3; if ($$3+0 < 70) { print "coverage below 70%"; exit 1 } }'
 
+cover-candidate:
+	cd services/candidate && go test -coverprofile=coverage.out ./internal/domain/... ./internal/app/... && \
+		go tool cover -func=coverage.out | awk '/^total:/ { sub("%","",$$3); printf "total coverage: %s%%\n", $$3; if ($$3+0 < 70) { print "coverage below 70%"; exit 1 } }'
+
 # Python AI service (services/ai, uv). ai-test runs unit tests only (no Docker);
 # ai-cover runs unit + integration tests together and needs Docker.
 AI_DIR := services/ai
@@ -78,10 +82,10 @@ ai-lint:
 ai-test:
 	cd $(AI_DIR) && uv run pytest tests/unit
 
-ai-test-int:
+ai-test-int: minio-image
 	cd $(AI_DIR) && uv run pytest -m integration tests/integration
 
-ai-cover:
+ai-cover: minio-image
 	cd $(AI_DIR) && uv run pytest -m "integration or not integration" --cov=ai_service \
 		--cov-report=term --cov-fail-under=70 tests
 
@@ -115,6 +119,12 @@ up:
 		sleep 1; \
 	done; \
 	echo "job service did not become reachable"; $(COMPOSE) logs --tail=50 job gateway; exit 1
+	@echo "waiting for candidate service at $(GATEWAY_URL)/v1/cvs"; \
+	for i in $$(seq 1 60); do \
+		test "$$(curl -s -o /dev/null -w '%{http_code}' $(GATEWAY_URL)/v1/cvs)" = 401 && { echo "candidate service is up"; exit 0; }; \
+		sleep 1; \
+	done; \
+	echo "candidate service did not become reachable"; $(COMPOSE) logs --tail=50 candidate gateway; exit 1
 
 down:
 	$(COMPOSE) --profile tools down
@@ -124,9 +134,10 @@ down:
 down-v:
 	$(COMPOSE) --profile tools down -v
 
-# Re-runs the auth and job migrations (the one-shot *-migrate containers).
+# Re-runs the auth, job, candidate and ai migrations (the one-shot *-migrate containers).
 migrate:
-	$(COMPOSE) run --rm auth-migrate && $(COMPOSE) run --rm job-migrate
+	$(COMPOSE) run --rm auth-migrate && $(COMPOSE) run --rm job-migrate && \
+		$(COMPOSE) run --rm candidate-migrate && $(COMPOSE) run --rm ai-migrate
 
 seed:
 	$(COMPOSE) run --rm auth-seed

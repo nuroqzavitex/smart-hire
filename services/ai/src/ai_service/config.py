@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     s3_secret_key: SecretStr
     s3_bucket: str = "cvs"
     s3_secure: bool = False
+    # Fixed region: without it minio-py asks the server for the bucket location,
+    # which the least-privilege ai-svc policy (s3:GetObject only) forbids.
+    s3_region: str = "us-east-1"
     llm_provider: Literal["fake", "anthropic"] = "fake"
     llm_model: str = "claude-opus-5-5"
     llm_timeout_s: float = 60
