@@ -237,9 +237,12 @@ func TestHealth_PublicWhenListed(t *testing.T) {
 func slowRegister(ctx context.Context, _ *authv1.RegisterRequest) (*authv1.RegisterResponse, error) {
 	select {
 	case <-time.After(5 * time.Second):
+		return &authv1.RegisterResponse{}, nil
 	case <-ctx.Done():
+		// Like a real handler, fail with the context error. Returning success
+		// here races the client's own deadline and flakes under -race on CI.
+		return nil, ctx.Err()
 	}
-	return &authv1.RegisterResponse{}, nil
 }
 
 func TestDial_DefaultTimeout(t *testing.T) {
