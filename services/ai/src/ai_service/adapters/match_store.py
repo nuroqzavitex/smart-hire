@@ -7,6 +7,7 @@ their own connection (gRPC side).
 
 import json
 from collections.abc import Iterable, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import asdict
 from typing import Any
 from uuid import UUID
@@ -15,9 +16,12 @@ from sqlalchemy import Connection, Engine, bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
+from ai_service.adapters import outbox
+from ai_service.domain.events import Envelope
 from ai_service.domain.matching import Breakdown, CvProfile, JobProfile, MatchRow
 from ai_service.domain.models import ParsedCV
 
+_IS_PROCESSED = text("SELECT 1 FROM processed_events WHERE event_id = :event_id")
 _RECORD_EVENT = text(
     "INSERT INTO processed_events (event_id, processed_at) VALUES (:event_id, now()) "
     "ON CONFLICT (event_id) DO NOTHING"
@@ -44,6 +48,9 @@ _UPSERT_CV = text(
 _SELECT_CV = text(
     "SELECT cv_id, candidate_id, version, status, parsed, parsed_at FROM match_cvs WHERE cv_id = :id"
 )
+_SELECT_CVS = text(
+    "SELECT cv_id, candidate_id, version, status, parsed, parsed_at FROM match_cvs WHERE cv_id = ANY(:ids)"
+).bindparams(bindparam("ids", type_=ARRAY(PG_UUID(as_uuid=True))))
 _CANDIDATE_CVS = text(
     "SELECT cv_id, status, parsed_at FROM match_cvs WHERE candidate_id = :candidate_id "
     "ORDER BY parsed_at DESC NULLS LAST, cv_id DESC FOR UPDATE"
@@ -127,7 +134,17 @@ class PgMatchStore:
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
 
+    def transaction(self) -> AbstractContextManager[Connection]:
+        return self._engine.begin()
+
+    def is_processed(self, event_id: str) -> bool:
+        with self._engine.connect() as conn:
+            return conn.execute(_IS_PROCESSED, {"event_id": event_id}).first() is not None
+
     # --- writes (caller's transaction) ---
+
+    def write_outbox(self, conn: Connection, env: Envelope, aggregate_id: str) -> None:
+        outbox.write(conn, env, aggregate_id=aggregate_id)
 
     def record_event(self, conn: Connection, event_id: str) -> bool:
         """False when the event was already processed."""
@@ -206,6 +223,12 @@ class PgMatchStore:
     def load_cv(self, cv_id: UUID) -> CvProfile | None:
         with self._engine.connect() as conn:
             return self.get_cv(conn, cv_id)
+
+    def load_cvs(self, cv_ids: Sequence[UUID]) -> dict[UUID, CvProfile]:
+        if not cv_ids:
+            return {}
+        with self._engine.connect() as conn:
+            return {r.cv_id: _cv(r) for r in conn.execute(_SELECT_CVS, {"ids": list(cv_ids)})}
 
     def open_jobs(self, job_ids: Sequence[UUID]) -> dict[UUID, JobProfile]:
         if not job_ids:

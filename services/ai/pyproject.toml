@@ -29,6 +29,7 @@ dependencies = [
 [project.scripts]
 ai-api = "ai_service.main_api:main"
 ai-worker = "ai_service.main_worker:main"
+ai-matcher = "ai_service.main_matcher:main"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.12.0"]

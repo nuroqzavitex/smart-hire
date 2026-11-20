@@ -3,16 +3,17 @@
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, StringConstraints
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 from ulid import ULID
 
-from ai_service.domain.models import ParseOutcome, ParseSuccess
+from ai_service.domain.models import ParsedCV, ParseOutcome, ParseSuccess
 
 SOURCE = "ai-service"
 SOURCE_CANDIDATE = "candidate-service"
+SOURCE_JOB = "job-service"
 EVENT_VERSION = 1
 CV_PARSED = "cv.parsed"
 CV_PARSE_FAILED = "cv.parse_failed"
@@ -39,6 +40,47 @@ class CvUploadedPayload(BaseModel):
     candidate_id: UUID
     object_key: str
     attempt_id: UlidStr
+
+
+class JobPayload(BaseModel):
+    """job.created / job.updated payload (contracts/events/job.*.v1.json)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    job_id: UUID
+    recruiter_id: UUID
+    title: str
+    description: str
+    location: str | None
+    required_skills: list[str]
+    nice_to_have_skills: list[str]
+    level: str
+    salary_min: int | None
+    salary_max: int | None
+    status: str
+    version: Annotated[int, Field(ge=1)]
+
+
+class JobRefPayload(BaseModel):
+    """job.closed / job.deleted payload."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    job_id: UUID
+    version: Annotated[int, Field(ge=1)]
+
+
+class CvUpdatedPayload(BaseModel):
+    """cv.updated payload (contracts/events/cv.updated.v1.json)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cv_id: UUID
+    candidate_id: UUID
+    version: Annotated[int, Field(ge=1)]
+    status: Literal["UPLOADED", "PARSED", "FAILED"]
+    parsed: ParsedCV | None
+    parsed_at: AwareDatetime | None
 
 
 def new_envelope(

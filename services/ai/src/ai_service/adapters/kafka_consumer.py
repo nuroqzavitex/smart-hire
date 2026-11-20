@@ -94,6 +94,8 @@ class RetryingConsumer:
         max_attempts: int = 3,
         base_s: float = 0.2,
         cap_s: float = 2.0,
+        transient: tuple[type[Exception], ...] = (),
+        transient_cap_s: float = 10.0,
         log: logging.Logger,
     ) -> None:
         self._consumer = consumer
@@ -103,6 +105,10 @@ class RetryingConsumer:
         self._max_attempts = max_attempts
         self._base_s = base_s
         self._cap_s = cap_s
+        # Infrastructure errors (rate limit, store down) retry until stop without
+        # counting attempts or dead-lettering: the partition waits (ADR 0010).
+        self._transient = transient
+        self._transient_cap_s = transient_cap_s
         self._log = log
 
     def run(self) -> None:
@@ -147,6 +153,7 @@ class RetryingConsumer:
         self, msg: MessageLike, raw_headers: list[tuple[str, bytes]], span: Span, env: Envelope
     ) -> bool:
         attempts = 0
+        outages = 0
         while True:
             attempts += 1
             try:
@@ -155,6 +162,16 @@ class RetryingConsumer:
                 # Like Go: shutdown is checked first for every handler error.
                 if self._stop.is_set():
                     return False
+                if self._transient and isinstance(exc, self._transient):
+                    attempts -= 1
+                    outages += 1
+                    self._log.warning(
+                        "dependency unavailable, retrying",
+                        extra={"event_id": env.event_id, "outage": outages, "error_type": type(exc).__name__},
+                    )
+                    if self._stop.wait(backoff(outages, self._base_s, self._transient_cap_s)):
+                        return False
+                    continue
                 if isinstance(exc, PermanentError):
                     self._log.warning("permanent error", extra={"event_id": env.event_id})
                     return self._dead_letter(
@@ -230,15 +247,17 @@ def _as_mapping(headers: Sequence[tuple[str, bytes]]) -> Mapping[str, str]:
     return {k: v.decode("utf-8", "replace") for k, v in headers}
 
 
-def make_consumer(brokers: str) -> confluent_kafka.Consumer:
+def make_consumer(
+    brokers: str, group_id: str = GROUP_ID, topics: Sequence[str] = (TOPIC,)
+) -> confluent_kafka.Consumer:
     consumer = confluent_kafka.Consumer(
         {
             "bootstrap.servers": brokers,
-            "group.id": GROUP_ID,
+            "group.id": group_id,
             "enable.auto.commit": False,
             "auto.offset.reset": "earliest",
             "max.poll.interval.ms": 900000,
         }
     )
-    consumer.subscribe([TOPIC])
+    consumer.subscribe(list(topics))
     return consumer

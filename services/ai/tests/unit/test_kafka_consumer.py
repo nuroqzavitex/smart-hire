@@ -95,7 +95,11 @@ class FakePublisher:
 
 class Setup:
     def __init__(
-        self, handler: Callable[["Setup", Envelope], None], *, dlq: FakePublisher | None = None
+        self,
+        handler: Callable[["Setup", Envelope], None],
+        *,
+        dlq: FakePublisher | None = None,
+        transient: tuple[type[Exception], ...] = (),
     ) -> None:
         self.stop = threading.Event()
         self.consumer = FakeConsumer(self.stop)
@@ -107,7 +111,9 @@ class Setup:
             self.calls += 1
             handler(self, env)
 
-        self.rc = RetryingConsumer(self.consumer, self.dlq, counted, self.stop, log=logging.getLogger("test"))
+        self.rc = RetryingConsumer(
+            self.consumer, self.dlq, counted, self.stop, transient=transient, log=logging.getLogger("test")
+        )
         real_wait = self.stop.wait
 
         def recording_wait(timeout: float | None = None) -> bool:
@@ -290,3 +296,61 @@ def test_dlq_write_failure_records_error_and_status(spans: InMemorySpanExporter)
         "PermanentError: cv.uploaded payload failed validation",
         "dlq write failed: RuntimeError",
     ]
+
+
+class Unavailable(Exception):
+    pass
+
+
+def test_transient_error_retries_without_dlq():
+    def handler(s: Setup, env: Envelope) -> None:
+        if s.calls <= 8:
+            raise Unavailable("rate limited")
+
+    s = Setup(handler, transient=(Unavailable,))
+    msg = FakeMessage(_envelope_bytes())
+    assert s.rc.process(msg) is True
+    assert s.calls == 9, "transient errors do not count towards max_attempts"
+    assert s.dlq.records == []
+    assert s.consumer.commits == [msg]
+    assert s.waits[:3] == [0.2, 0.4, 0.8]
+    assert max(s.waits) <= 10.0
+    assert s.waits[-1] == 10.0
+
+
+def test_transient_shutdown_leaves_uncommitted():
+    def handler(s: Setup, env: Envelope) -> None:
+        s.stop.set()
+        raise Unavailable("down")
+
+    s = Setup(handler, transient=(Unavailable,))
+    assert s.rc.process(FakeMessage(_envelope_bytes())) is False
+    assert s.consumer.commits == []
+    assert s.dlq.records == []
+
+
+def test_permanent_still_dlq_with_transient_configured():
+    def handler(s: Setup, env: Envelope) -> None:
+        raise PermanentError("bad")
+
+    s = Setup(handler, transient=(Unavailable,))
+    assert s.rc.process(FakeMessage(_envelope_bytes())) is True
+    assert len(s.dlq.records) == 1
+
+
+def test_make_consumer_topics_and_group(monkeypatch: pytest.MonkeyPatch):
+    seen: dict[str, object] = {}
+
+    class C:
+        def __init__(self, conf: dict[str, object]) -> None:
+            seen["conf"] = conf
+
+        def subscribe(self, topics: list[str]) -> None:
+            seen["topics"] = topics
+
+    monkeypatch.setattr(kafka_consumer.confluent_kafka, "Consumer", C)
+    kafka_consumer.make_consumer("b:9092", group_id="ai-matcher", topics=("job.created", "cv.updated"))
+    assert seen["topics"] == ["job.created", "cv.updated"]
+    assert seen["conf"]["group.id"] == "ai-matcher"  # type: ignore[index]
+    kafka_consumer.make_consumer("b:9092")
+    assert seen["topics"] == ["cv.uploaded"]
