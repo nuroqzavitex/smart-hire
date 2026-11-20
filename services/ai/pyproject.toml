@@ -9,6 +9,7 @@ dependencies = [
     "anthropic>=1.0,<2",
     "confluent-kafka>=2.6",
     "fastapi>=0.115",
+    "google-genai>=3.6",
     "grpcio>=1.85",
     "minio>=7.2",
     "opentelemetry-exporter-otlp-proto-grpc>=1.28",

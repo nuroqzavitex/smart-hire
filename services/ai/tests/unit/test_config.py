@@ -83,3 +83,21 @@ def test_settings_ignores_unprefixed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("S3_SECRET_KEY", "secret-value")
     with pytest.raises(ValidationError):
         load_settings()
+
+
+def test_embedding_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    _required(monkeypatch)
+    s = load_settings()
+    assert s.embedding_provider == "fake"
+    assert s.embedding_model == "gemini-embedding-001"
+    assert s.qdrant_url == "http://qdrant:6333"
+    assert s.grpc_port == 9100
+
+
+def test_gemini_requires_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    _required(monkeypatch)
+    monkeypatch.setenv("AI_EMBEDDING_PROVIDER", "gemini")
+    with pytest.raises(ValidationError):
+        load_settings()
+    monkeypatch.setenv("AI_GEMINI_API_KEY", "k")
+    assert load_settings().gemini_api_key.get_secret_value() == "k"

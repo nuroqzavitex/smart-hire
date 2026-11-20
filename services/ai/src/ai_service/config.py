@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DSN_SCHEMES = ("postgres://", "postgresql://", "postgresql+psycopg://")
@@ -37,12 +37,24 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 60
     outbox_interval_ms: int = 500
     http_port: int = 8100
+    grpc_port: int = 9100
+    qdrant_url: str = "http://qdrant:6333"
+    embedding_provider: Literal["fake", "gemini"] = "fake"
+    embedding_model: str = "gemini-embedding-001"
+    embedding_timeout_s: float = 30
+    gemini_api_key: SecretStr = SecretStr("")
     log_level: str = "INFO"
 
     @field_validator("db_dsn")
     @classmethod
     def _normalize_dsn(cls, value: str) -> str:
         return normalize_dsn(value)
+
+    @model_validator(mode="after")
+    def _gemini_needs_key(self) -> "Settings":
+        if self.embedding_provider == "gemini" and not self.gemini_api_key.get_secret_value():
+            raise ValueError("AI_GEMINI_API_KEY is required when AI_EMBEDDING_PROVIDER=gemini")
+        return self
 
 
 def load_settings() -> Settings:
