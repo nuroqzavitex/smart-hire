@@ -174,3 +174,40 @@ func TestHandle_AliasCachedForTTL(t *testing.T) {
 	require.NoError(t, p.Handle(context.Background(), ev, nil))
 	assert.Equal(t, 2, s.resolves)
 }
+
+type goneErr struct{}
+
+func (goneErr) Error() string { return "index gone" }
+
+func TestHandle_IndexGoneRefreshesAlias(t *testing.T) {
+	s := newFakeStore()
+	resolved := [][]string{{"jobs_v1", "jobs_v2"}, {"jobs_v2"}}
+	s.resolveFn = func() ([]string, error) {
+		r := resolved[0]
+		if len(resolved) > 1 {
+			resolved = resolved[1:]
+		}
+		return r, nil
+	}
+	p := newProjector(s, nil)
+	p.IndexGone = func(err error) bool { return errors.As(err, new(goneErr)) }
+	inner := s
+	gone := &goneStore{fakeStore: inner, gone: "jobs_v1"}
+	p.Store = gone
+	require.NoError(t, p.Handle(context.Background(), envelope(t, "job.closed", map[string]any{"job_id": jobID, "version": 2}), nil))
+	assert.Equal(t, 2, s.resolves, "re-resolved the write alias once")
+	assert.Len(t, s.puts["jobs_v2"], 1, "retried on the fresh alias")
+}
+
+// goneStore fails writes to one deleted index.
+type goneStore struct {
+	*fakeStore
+	gone string
+}
+
+func (g *goneStore) Put(ctx context.Context, index string, d projection.Document) (bool, error) {
+	if index == g.gone {
+		return false, goneErr{}
+	}
+	return g.fakeStore.Put(ctx, index, d)
+}

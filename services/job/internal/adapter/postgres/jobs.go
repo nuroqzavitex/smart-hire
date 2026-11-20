@@ -200,3 +200,30 @@ func toText(s string) pgtype.Text {
 	}
 	return pgtype.Text{String: s, Valid: true}
 }
+
+// ScanAll implements projection.JobSource: every job, soft-deleted included,
+// in id order after afterID.
+func (r *JobRepo) ScanAll(ctx context.Context, afterID uuid.UUID, limit int) ([]domain.Job, error) {
+	rows, err := queries(ctx, r.pool).ScanAllJobs(ctx, sqlc.ScanAllJobsParams{AfterID: afterID, Lim: int32(limit)}) //nolint:gosec // limit is a small batch size
+	if err != nil {
+		return nil, fmt.Errorf("scan jobs: %w", err)
+	}
+	jobs := make([]domain.Job, len(rows))
+	for i, row := range rows {
+		jobs[i] = toJob(sqlc.GetJobRow(row))
+	}
+	return jobs, nil
+}
+
+// OpenVersions implements projection.JobSource.
+func (r *JobRepo) OpenVersions(ctx context.Context) (map[uuid.UUID]int64, error) {
+	rows, err := queries(ctx, r.pool).OpenJobVersions(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("open job versions: %w", err)
+	}
+	out := make(map[uuid.UUID]int64, len(rows))
+	for _, row := range rows {
+		out[row.ID] = row.Version
+	}
+	return out, nil
+}

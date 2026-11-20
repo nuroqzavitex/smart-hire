@@ -325,6 +325,105 @@ func (q *Queries) ListOpenJobs(ctx context.Context, arg ListOpenJobsParams) ([]L
 	return items, nil
 }
 
+const openJobVersions = `-- name: OpenJobVersions :many
+SELECT id, version FROM jobs WHERE status = 'open' AND deleted_at IS NULL
+`
+
+type OpenJobVersionsRow struct {
+	ID      uuid.UUID
+	Version int64
+}
+
+func (q *Queries) OpenJobVersions(ctx context.Context) ([]OpenJobVersionsRow, error) {
+	rows, err := q.db.Query(ctx, openJobVersions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OpenJobVersionsRow
+	for rows.Next() {
+		var i OpenJobVersionsRow
+		if err := rows.Scan(&i.ID, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const scanAllJobs = `-- name: ScanAllJobs :many
+SELECT id, recruiter_id, title, description, required_skills, nice_to_have_skills, level, location, salary_min, salary_max, status, version, published_at, deleted_at, created_at, updated_at
+FROM jobs
+WHERE id > $1::uuid
+ORDER BY id
+LIMIT $2
+`
+
+type ScanAllJobsParams struct {
+	AfterID uuid.UUID
+	Lim     int32
+}
+
+type ScanAllJobsRow struct {
+	ID               uuid.UUID
+	RecruiterID      uuid.UUID
+	Title            string
+	Description      string
+	RequiredSkills   []string
+	NiceToHaveSkills []string
+	Level            string
+	Location         string
+	SalaryMin        pgtype.Int4
+	SalaryMax        pgtype.Int4
+	Status           string
+	Version          int64
+	PublishedAt      *time.Time
+	DeletedAt        *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+// Every job, soft-deleted included, in id order (read-model rebuild).
+func (q *Queries) ScanAllJobs(ctx context.Context, arg ScanAllJobsParams) ([]ScanAllJobsRow, error) {
+	rows, err := q.db.Query(ctx, scanAllJobs, arg.AfterID, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ScanAllJobsRow
+	for rows.Next() {
+		var i ScanAllJobsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RecruiterID,
+			&i.Title,
+			&i.Description,
+			&i.RequiredSkills,
+			&i.NiceToHaveSkills,
+			&i.Level,
+			&i.Location,
+			&i.SalaryMin,
+			&i.SalaryMax,
+			&i.Status,
+			&i.Version,
+			&i.PublishedAt,
+			&i.DeletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchOpenJobs = `-- name: SearchOpenJobs :many
 WITH q AS (SELECT websearch_to_tsquery('simple', unaccent_immutable($9::text)) AS tsq)
 SELECT j.id, j.recruiter_id, j.title, j.description, j.required_skills, j.nice_to_have_skills, j.level, j.location, j.salary_min, j.salary_max, j.status, j.version, j.published_at, j.deleted_at, j.created_at, j.updated_at, ts_rank(j.search_vector, q.tsq)::real AS rank

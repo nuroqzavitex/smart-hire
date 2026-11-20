@@ -55,3 +55,14 @@ WHERE recruiter_id = $1 AND deleted_at IS NULL
        (created_at, id) < (sqlc.narg(after_at)::timestamptz, sqlc.narg(after_id)::uuid))
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(lim);
+
+-- name: ScanAllJobs :many
+-- Every job, soft-deleted included, in id order (read-model rebuild).
+SELECT id, recruiter_id, title, description, required_skills, nice_to_have_skills, level, location, salary_min, salary_max, status, version, published_at, deleted_at, created_at, updated_at
+FROM jobs
+WHERE id > sqlc.arg(after_id)::uuid
+ORDER BY id
+LIMIT sqlc.arg(lim);
+
+-- name: OpenJobVersions :many
+SELECT id, version FROM jobs WHERE status = 'open' AND deleted_at IS NULL;

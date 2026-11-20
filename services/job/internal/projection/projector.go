@@ -34,8 +34,12 @@ type Projector struct {
 	// AliasTTL bounds how long a resolved write alias is reused; rebuild
 	// waits longer than this after adding a new index.
 	AliasTTL time.Duration
-	Now      func() time.Time
-	Log      *slog.Logger
+	// IndexGone reports whether a Put error means the index was deleted
+	// (a rebuild finished); the alias is then re-resolved and the write
+	// retried once.
+	IndexGone func(error) bool
+	Now       func() time.Time
+	Log       *slog.Logger
 
 	mu        sync.Mutex
 	indices   []string
@@ -58,6 +62,16 @@ func (p *Projector) Handle(ctx context.Context, env event.Envelope, _ *kgo.Recor
 	if err != nil {
 		return err
 	}
+	err = p.apply(ctx, d)
+	if err != nil && p.IndexGone != nil && p.IndexGone(err) {
+		p.invalidate()
+		err = p.apply(ctx, d)
+	}
+	return err
+}
+
+// apply writes d to every index behind the (cached) write alias.
+func (p *Projector) apply(ctx context.Context, d Document) error {
 	indices, err := p.writeIndices(ctx)
 	if err != nil {
 		return fmt.Errorf("resolve write alias: %w", err)
@@ -72,6 +86,12 @@ func (p *Projector) Handle(ctx context.Context, env event.Envelope, _ *kgo.Recor
 		}
 	}
 	return nil
+}
+
+func (p *Projector) invalidate() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.indices = nil
 }
 
 func (p *Projector) writeIndices(ctx context.Context) ([]string, error) {

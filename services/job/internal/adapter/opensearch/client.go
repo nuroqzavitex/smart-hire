@@ -25,7 +25,7 @@ import (
 const (
 	ReadAlias   = "jobs"
 	WriteAlias  = "jobs_write"
-	IndexPrefix = "jobs_v"
+	IndexPrefix = projection.IndexPrefix
 )
 
 //go:embed index.json
@@ -207,3 +207,7 @@ func (c *Client) Put(ctx context.Context, index string, d projection.Document) (
 	}
 	return false, newError("index document", status, body)
 }
+
+// IndexGone reports whether err means the target index does not exist
+// (deleted by a finished rebuild); see projection.Projector.IndexGone.
+func IndexGone(err error) bool { return errorType(err) == "index_not_found_exception" }
