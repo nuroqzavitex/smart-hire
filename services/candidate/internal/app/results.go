@@ -71,6 +71,6 @@ func (s *Service) HandleParseResult(ctx context.Context, raw []byte) error {
 		if err := s.CVs.Update(ctx, cv); err != nil {
 			return fmt.Errorf("update cv: %w", err)
 		}
-		return nil
+		return s.emitUpdated(ctx, cv, now)
 	})
 }

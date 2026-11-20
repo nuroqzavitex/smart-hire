@@ -130,6 +130,9 @@ func (s *Service) mutate(ctx context.Context, id, uid uuid.UUID,
 		if err := s.CVs.Update(ctx, cv); err != nil {
 			return fmt.Errorf("update cv: %w", err)
 		}
+		if err := s.emitUpdated(ctx, cv, cv.UpdatedAt); err != nil {
+			return err
+		}
 		if emit {
 			if err := s.emitUploaded(ctx, cv, cv.UpdatedAt); err != nil {
 				return err

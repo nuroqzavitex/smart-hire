@@ -60,7 +60,7 @@ func TestUpdateParsedData(t *testing.T) {
 		assert.JSONEq(t, string(want), string(out.ParsedData))
 		assert.NoError(t, eventschema.ValidateDef("cv.parsed", "ParsedCV", out.ParsedData))
 		assert.Equal(t, out, e.cvs.m[cv.ID])
-		assert.Equal(t, events, e.ob.count(), "no event")
+		assert.Equal(t, events+1, e.ob.count(), "only cv.updated")
 	})
 
 	t.Run("fixture edit", func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestReparse_EmitsNewAttempt(t *testing.T) {
 	assert.Equal(t, cv.Version+1, out.Version)
 	assert.Equal(t, out, e.cvs.m[cv.ID])
 
-	require.Equal(t, events+1, e.ob.count())
+	require.Equal(t, events+2, e.ob.count(), "cv.updated + cv.uploaded")
 	ev := e.ob.last()
 	assert.Equal(t, "cv.uploaded", ev.EventType)
 	assert.Equal(t, cv.ID.String(), e.ob.lastKey())
@@ -151,7 +151,7 @@ func TestReparse_StaleUploaded(t *testing.T) {
 	assert.Equal(t, domain.StatusUploaded, out.Status)
 	assert.NotEqual(t, attemptA, out.AttemptID)
 	assert.Equal(t, cv.Version+1, out.Version)
-	require.Equal(t, n+1, e.ob.count())
+	require.Equal(t, n+2, e.ob.count(), "cv.updated + cv.uploaded")
 	ev := e.ob.last()
 	assert.Equal(t, "cv.uploaded", ev.EventType)
 	var p map[string]string

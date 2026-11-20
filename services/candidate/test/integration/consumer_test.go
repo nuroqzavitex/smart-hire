@@ -19,6 +19,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/nuroqzavitex/smarthire/pkg/event"
+	"github.com/nuroqzavitex/smarthire/pkg/event/eventschema"
 	"github.com/nuroqzavitex/smarthire/pkg/kafka"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/consumer"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/postgres"
@@ -145,6 +146,14 @@ func TestConsumer_AppliesParsed(t *testing.T) {
 	assert.JSONEq(t, string(full), string(got.ParsedData))
 	assert.Equal(t, cv.Version+1, got.Version)
 	assert.NotNil(t, got.ParsedAt)
+
+	// The applied result is announced as cv.updated in the same transaction.
+	var aggregate string
+	var payload []byte
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`SELECT aggregate_id, payload FROM outbox WHERE event_type = 'cv.updated'`).Scan(&aggregate, &payload))
+	assert.Equal(t, cv.ID.String(), aggregate)
+	assert.NoError(t, eventschema.Validate("cv.updated", payload))
 }
 
 func TestConsumer_StaleAndDuplicateIgnored(t *testing.T) {

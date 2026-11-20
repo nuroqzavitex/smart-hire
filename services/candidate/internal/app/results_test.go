@@ -85,7 +85,7 @@ func TestHandleParseResult_AppliesParsed(t *testing.T) {
 	assert.NotNil(t, got.ParsedAt)
 	assert.Equal(t, cv.Version+1, got.Version)
 	assert.True(t, e.idem.seen[eventID(t, raw)])
-	assert.Equal(t, 1, e.ob.count(), "consuming a result emits nothing")
+	assert.Equal(t, 2, e.ob.count(), "cv.uploaded, then cv.updated for the applied result")
 }
 
 func TestHandleParseResult_AppliesFailed(t *testing.T) {
