@@ -1,0 +1,60 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "refresh_interval": "1s",
+    "analysis": {
+      "filter": {
+        "skill_synonyms": {
+          "type": "synonym",
+          "lenient": true,
+          "synonyms": [
+            "golang, go",
+            "k8s, kubernetes",
+            "js, javascript",
+            "ts, typescript",
+            "postgres, postgresql",
+            "nodejs, node.js, node"
+          ]
+        }
+      },
+      "normalizer": {
+        "folded": { "type": "custom", "filter": ["lowercase", "icu_folding"] }
+      },
+      "analyzer": {
+        "vi": { "type": "custom", "tokenizer": "icu_tokenizer", "filter": ["icu_folding", "skill_synonyms"] },
+        "vi_exact": { "type": "custom", "tokenizer": "icu_tokenizer", "filter": ["lowercase"] }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "job_id": { "type": "keyword" },
+      "version": { "type": "long" },
+      "status": { "type": "keyword" },
+      "recruiter_id": { "type": "keyword" },
+      "title": {
+        "type": "text", "analyzer": "vi",
+        "fields": { "raw": { "type": "text", "analyzer": "vi_exact" } }
+      },
+      "description": { "type": "text", "analyzer": "vi" },
+      "required_skills": {
+        "type": "keyword", "normalizer": "folded",
+        "fields": { "text": { "type": "text", "analyzer": "vi" } }
+      },
+      "nice_to_have_skills": {
+        "type": "keyword", "normalizer": "folded",
+        "fields": { "text": { "type": "text", "analyzer": "vi" } }
+      },
+      "level": { "type": "keyword" },
+      "location": {
+        "type": "keyword", "normalizer": "folded",
+        "fields": { "text": { "type": "text", "analyzer": "vi" } }
+      },
+      "salary_min": { "type": "integer" },
+      "salary_max": { "type": "integer" },
+      "published_at": { "type": "date" }
+    }
+  }
+}
