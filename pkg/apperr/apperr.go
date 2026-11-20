@@ -16,6 +16,9 @@ var (
 	ErrValidation      = errors.New("validation failed")
 	ErrForbidden       = errors.New("forbidden")
 	ErrUnauthenticated = errors.New("unauthenticated")
+	// ErrUnavailable: a dependency (e.g. the AI service) is down or its
+	// circuit breaker is open; the caller may retry later (HTTP 503).
+	ErrUnavailable = errors.New("unavailable")
 )
 
 type appError struct {
@@ -40,6 +43,7 @@ var kindCodes = []struct {
 	{ErrValidation, codes.InvalidArgument},
 	{ErrForbidden, codes.PermissionDenied},
 	{ErrUnauthenticated, codes.Unauthenticated},
+	{ErrUnavailable, codes.Unavailable},
 }
 
 // ToGRPC converts err to a gRPC status error. Unknown errors become Internal

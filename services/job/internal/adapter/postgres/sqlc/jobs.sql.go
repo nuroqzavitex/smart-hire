@@ -109,6 +109,67 @@ func (q *Queries) GetJobForUpdate(ctx context.Context, id uuid.UUID) (GetJobForU
 	return i, err
 }
 
+const getOpenJobsByIDs = `-- name: GetOpenJobsByIDs :many
+SELECT id, recruiter_id, title, description, required_skills, nice_to_have_skills, level, location, salary_min, salary_max, status, version, published_at, deleted_at, created_at, updated_at
+FROM jobs WHERE id = ANY($1::uuid[]) AND status = 'open' AND deleted_at IS NULL
+`
+
+type GetOpenJobsByIDsRow struct {
+	ID               uuid.UUID
+	RecruiterID      uuid.UUID
+	Title            string
+	Description      string
+	RequiredSkills   []string
+	NiceToHaveSkills []string
+	Level            string
+	Location         string
+	SalaryMin        pgtype.Int4
+	SalaryMax        pgtype.Int4
+	Status           string
+	Version          int64
+	PublishedAt      *time.Time
+	DeletedAt        *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+func (q *Queries) GetOpenJobsByIDs(ctx context.Context, ids []uuid.UUID) ([]GetOpenJobsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, getOpenJobsByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetOpenJobsByIDsRow
+	for rows.Next() {
+		var i GetOpenJobsByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RecruiterID,
+			&i.Title,
+			&i.Description,
+			&i.RequiredSkills,
+			&i.NiceToHaveSkills,
+			&i.Level,
+			&i.Location,
+			&i.SalaryMin,
+			&i.SalaryMax,
+			&i.Status,
+			&i.Version,
+			&i.PublishedAt,
+			&i.DeletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertJob = `-- name: InsertJob :exec
 INSERT INTO jobs (id, recruiter_id, title, description, required_skills, nice_to_have_skills, level, location, salary_min, salary_max, status, version, published_at, deleted_at, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)

@@ -28,6 +28,13 @@ type Config struct {
 	SearchTimeout         time.Duration `env:"SEARCH_TIMEOUT" envDefault:"2s"`
 	SearchBreakerFailures uint32        `env:"SEARCH_BREAKER_FAILURES" envDefault:"5"`
 	SearchBreakerOpen     time.Duration `env:"SEARCH_BREAKER_OPEN" envDefault:"30s"`
+
+	// AI matching service (ADR 0010). Down at startup is not fatal: only
+	// ListMatchedCandidates fails (503) until it is reachable.
+	AIAddr            string        `env:"AI_ADDR" envDefault:"ai-api:9100"`
+	AITimeout         time.Duration `env:"AI_TIMEOUT" envDefault:"2s"`
+	AIBreakerFailures uint32        `env:"AI_BREAKER_FAILURES" envDefault:"5"`
+	AIBreakerOpen     time.Duration `env:"AI_BREAKER_OPEN" envDefault:"30s"`
 }
 
 // ProjectorConfig configures cmd/projector (consumer, rebuild, reconcile).

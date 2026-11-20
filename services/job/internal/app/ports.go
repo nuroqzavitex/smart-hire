@@ -56,6 +56,38 @@ type JobRepo interface {
 	// Search returns open, non-deleted jobs; Rank is 0 when Query is empty.
 	Search(ctx context.Context, f SearchFilter, after *Cursor, limit int) ([]SearchHit, error)
 	ListByRecruiter(ctx context.Context, recruiterID uuid.UUID, status *domain.Status, after *Cursor, limit int) ([]domain.Job, error)
+	// GetOpenByIDs returns the open, non-deleted jobs among ids, in any order.
+	GetOpenByIDs(ctx context.Context, ids []uuid.UUID) ([]domain.Job, error)
+}
+
+// MatchBreakdown explains a match score (ADR 0010).
+type MatchBreakdown struct {
+	SemanticSimilarity    float64
+	RequiredSkillCoverage float64
+	ExperienceFit         float64
+	LocationFit           float64
+	MatchedSkills         []string
+	MissingSkills         []string
+}
+
+// MatchedCandidate is one ranked CV for a job.
+type MatchedCandidate struct {
+	CandidateID uuid.UUID
+	CVID        uuid.UUID
+	Score       float64
+	Breakdown   MatchBreakdown
+}
+
+// MatchList is the AI service's ranking for a job.
+type MatchList struct {
+	Candidates   []MatchedCandidate
+	ModelVersion string
+}
+
+// Matcher asks the AI service for the candidates ranked for a job. When the
+// service is down (or its breaker is open) it fails with apperr.ErrUnavailable.
+type Matcher interface {
+	FindCandidates(ctx context.Context, jobID uuid.UUID, topK int) (MatchList, error)
 }
 
 // FacetCount is one bucket of a search facet.

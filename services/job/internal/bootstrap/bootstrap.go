@@ -23,6 +23,7 @@ import (
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
 	"github.com/nuroqzavitex/smarthire/pkg/otel"
 	"github.com/nuroqzavitex/smarthire/pkg/outbox"
+	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/aiclient"
 	jobgrpc "github.com/nuroqzavitex/smarthire/services/job/internal/adapter/grpc"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/httpx"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/opensearch"
@@ -48,16 +49,17 @@ func ParseLevel(s string) slog.Level {
 }
 
 // NewService assembles the use-case service over the postgres adapters and
-// the (guarded) search read model; search may be nil (Postgres only).
-func NewService(pool *pgxpool.Pool, search app.SearchBackend, log *slog.Logger) *app.Service {
+// the (guarded) search read model and AI matcher; either may be nil.
+func NewService(pool *pgxpool.Pool, search app.SearchBackend, matcher app.Matcher, log *slog.Logger) *app.Service {
 	return app.NewService(app.Deps{
-		Jobs:   postgres.NewJobRepo(pool),
-		Outbox: postgres.NewOutboxWriter(pool),
-		Tx:     postgres.NewTxManager(pool),
-		Search: search,
-		Now:    time.Now,
-		NewID:  uuid.New,
-		Logger: log,
+		Jobs:    postgres.NewJobRepo(pool),
+		Outbox:  postgres.NewOutboxWriter(pool),
+		Tx:      postgres.NewTxManager(pool),
+		Search:  search,
+		Matcher: matcher,
+		Now:     time.Now,
+		NewID:   uuid.New,
+		Logger:  log,
 	})
 }
 
@@ -98,7 +100,15 @@ func Run(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 	search := opensearch.NewGuarded(osClient, cfg.SearchBreakerFailures, cfg.SearchBreakerOpen, cfg.SearchTimeout)
-	svc := NewService(pool, search, log)
+
+	// Lazy connection: the AI service being down only fails matching (ADR 0010).
+	aiConn, err := grpcx.Dial(cfg.AIAddr)
+	if err != nil {
+		return fmt.Errorf("dial ai: %w", err)
+	}
+	defer func() { _ = aiConn.Close() }()
+	matcher := aiclient.New(aiConn, cfg.AIBreakerFailures, cfg.AIBreakerOpen, cfg.AITimeout)
+	svc := NewService(pool, search, matcher, log)
 
 	httpSrv := &http.Server{
 		Handler:           httpx.NewHandler(pool.Ping),

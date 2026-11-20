@@ -15,9 +15,11 @@ type Deps struct {
 	Tx     TxManager
 	// Search is the read model for ListOpen; nil means Postgres only.
 	Search SearchBackend
-	Now    func() time.Time
-	NewID  func() uuid.UUID
-	Logger *slog.Logger
+	// Matcher ranks candidates for a job (AI service); nil means unavailable.
+	Matcher Matcher
+	Now     func() time.Time
+	NewID   func() uuid.UUID
+	Logger  *slog.Logger
 }
 
 // Service implements the job use cases.

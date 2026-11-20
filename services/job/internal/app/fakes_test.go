@@ -50,6 +50,18 @@ func (f *fakeJobs) GetForUpdate(_ context.Context, id uuid.UUID) (domain.Job, er
 	return f.get(id)
 }
 
+func (f *fakeJobs) GetOpenByIDs(_ context.Context, ids []uuid.UUID) ([]domain.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.Job
+	for _, id := range ids {
+		if j, ok := f.m[id]; ok && j.Status == domain.StatusOpen && j.DeletedAt == nil {
+			out = append(out, j)
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeJobs) Update(_ context.Context, j domain.Job) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

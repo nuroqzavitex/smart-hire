@@ -6,6 +6,10 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16);
 SELECT id, recruiter_id, title, description, required_skills, nice_to_have_skills, level, location, salary_min, salary_max, status, version, published_at, deleted_at, created_at, updated_at
 FROM jobs WHERE id = $1 AND deleted_at IS NULL;
 
+-- name: GetOpenJobsByIDs :many
+SELECT id, recruiter_id, title, description, required_skills, nice_to_have_skills, level, location, salary_min, salary_max, status, version, published_at, deleted_at, created_at, updated_at
+FROM jobs WHERE id = ANY(@ids::uuid[]) AND status = 'open' AND deleted_at IS NULL;
+
 -- name: GetJobForUpdate :one
 SELECT id, recruiter_id, title, description, required_skills, nice_to_have_skills, level, location, salary_min, salary_max, status, version, published_at, deleted_at, created_at, updated_at
 FROM jobs WHERE id = $1 AND deleted_at IS NULL FOR UPDATE;

@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	jobv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1"
+	"github.com/nuroqzavitex/smarthire/pkg/apperr"
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
 	"github.com/nuroqzavitex/smarthire/pkg/authz/authztest"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
@@ -39,6 +40,22 @@ type fakeUC struct {
 	filter  app.SearchFilter
 	pageReq app.PageRequest
 	status  *domain.Status
+	matches app.MatchList
+	topK    int
+	ids     []uuid.UUID
+	jobs    []domain.Job
+}
+
+func (f *fakeUC) ListMatchedCandidates(_ context.Context, id uuid.UUID, topK int) (app.MatchList, error) {
+	f.calls++
+	f.id, f.topK = id, topK
+	return f.matches, f.err
+}
+
+func (f *fakeUC) BatchGetJobs(_ context.Context, ids []uuid.UUID) ([]domain.Job, error) {
+	f.calls++
+	f.ids = ids
+	return f.jobs, f.err
 }
 
 func (f *fakeUC) Create(_ context.Context, d domain.Draft) (domain.Job, error) {
@@ -317,4 +334,53 @@ func TestHandler_ListJobsMapsFacetsAndDegraded(t *testing.T) {
 	assert.Equal(t, int64(3), got.GetFacets().GetSkills()[0].GetCount())
 	assert.Equal(t, "ha noi", got.GetFacets().GetLocations()[0].GetValue())
 	assert.Equal(t, "senior", got.GetFacets().GetLevels()[0].GetValue())
+}
+
+func TestHandler_ListMatchedCandidatesMaps(t *testing.T) {
+	e := newEnv(t)
+	cand, cv := uuid.New(), uuid.New()
+	e.uc.matches = app.MatchList{ModelVersion: "m@768", Candidates: []app.MatchedCandidate{{
+		CandidateID: cand, CVID: cv, Score: 91.25,
+		Breakdown: app.MatchBreakdown{SemanticSimilarity: 0.9, RequiredSkillCoverage: 1, ExperienceFit: 0.5,
+			LocationFit: 1, MatchedSkills: []string{"Go"}, MissingSkills: []string{}},
+	}}}
+	id := uuid.New()
+	resp, err := e.client.ListMatchedCandidates(e.recruiterCtx(t), &jobv1.ListMatchedCandidatesRequest{Id: id.String(), TopK: 5})
+	require.NoError(t, err)
+	assert.Equal(t, id, e.uc.id)
+	assert.Equal(t, 5, e.uc.topK)
+	assert.Equal(t, "m@768", resp.GetModelVersion())
+	require.Len(t, resp.GetCandidates(), 1)
+	c := resp.GetCandidates()[0]
+	assert.Equal(t, cand.String(), c.GetCandidateId())
+	assert.Equal(t, cv.String(), c.GetCvId())
+	assert.InDelta(t, 91.25, c.GetScore(), 1e-9)
+	assert.Equal(t, []string{"Go"}, c.GetBreakdown().GetMatchedSkills())
+	assert.InDelta(t, 0.5, c.GetBreakdown().GetExperienceFit(), 1e-9)
+
+	_, err = e.client.ListMatchedCandidates(e.recruiterCtx(t), &jobv1.ListMatchedCandidatesRequest{Id: "nope"})
+	assert.Equal(t, codes.InvalidArgument, code(err))
+	_, err = e.client.ListMatchedCandidates(context.Background(), &jobv1.ListMatchedCandidatesRequest{Id: id.String()})
+	assert.Equal(t, codes.Unauthenticated, code(err))
+}
+
+func TestHandler_ListMatchedCandidatesUnavailable(t *testing.T) {
+	e := newEnv(t)
+	e.uc.err = apperr.New(apperr.ErrUnavailable, "matching temporarily unavailable")
+	_, err := e.client.ListMatchedCandidates(e.recruiterCtx(t), &jobv1.ListMatchedCandidatesRequest{Id: uuid.NewString()})
+	assert.Equal(t, codes.Unavailable, code(err))
+}
+
+func TestHandler_BatchGetJobs(t *testing.T) {
+	e := newEnv(t)
+	a, b := uuid.New(), uuid.New()
+	e.uc.jobs = []domain.Job{{ID: b, Title: "B", Status: domain.StatusOpen, Level: domain.LevelSenior}}
+	resp, err := e.client.BatchGetJobs(e.recruiterCtx(t), &jobv1.BatchGetJobsRequest{Ids: []string{a.String(), b.String()}})
+	require.NoError(t, err)
+	assert.Equal(t, []uuid.UUID{a, b}, e.uc.ids)
+	require.Len(t, resp.GetJobs(), 1)
+	assert.Equal(t, "B", resp.GetJobs()[0].GetTitle())
+
+	_, err = e.client.BatchGetJobs(e.recruiterCtx(t), &jobv1.BatchGetJobsRequest{Ids: []string{"x"}})
+	assert.Equal(t, codes.InvalidArgument, code(err))
 }

@@ -44,6 +44,8 @@ func TestToGRPC(t *testing.T) {
 		{fmt.Errorf("x: %w", apperr.ErrValidation), codes.InvalidArgument, "validation failed"},
 		{fmt.Errorf("x: %w", apperr.ErrForbidden), codes.PermissionDenied, "forbidden"},
 		{fmt.Errorf("x: %w", apperr.ErrUnauthenticated), codes.Unauthenticated, "unauthenticated"},
+		{apperr.New(apperr.ErrUnavailable, "matching unavailable"), codes.Unavailable, "matching unavailable"},
+		{fmt.Errorf("ai: dial 10.0.0.5: %w", apperr.ErrUnavailable), codes.Unavailable, "unavailable"},
 	}
 	for _, c := range cases {
 		st, _ := status.FromError(apperr.ToGRPC(c.in))

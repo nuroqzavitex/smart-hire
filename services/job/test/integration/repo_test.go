@@ -157,3 +157,21 @@ func TestListByRecruiter_StatusAndPaging(t *testing.T) {
 	}
 	assert.Equal(t, want, seen, "paging must reproduce the single-query order without duplicates or gaps")
 }
+
+func TestRepo_GetOpenByIDs(t *testing.T) {
+	truncate(t)
+	repo := postgres.NewJobRepo(pool)
+	ctx := context.Background()
+	open := seedOpen(t, "Open one", []string{"Go"}, "Hà Nội", domain.LevelMiddle, nil, nil, time.Now())
+	gone := seedOpen(t, "Deleted one", nil, "Hà Nội", domain.LevelMiddle, nil, nil, time.Now())
+	draft := seedDraft(t, seedOpts{title: "Draft one"})
+	require.NoError(t, gone.Close(time.Now()))
+	require.NoError(t, gone.Delete(time.Now()))
+	require.NoError(t, repo.Update(ctx, gone))
+
+	got, err := repo.GetOpenByIDs(ctx, []uuid.UUID{open.ID, gone.ID, draft.ID, uuid.New()})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, open.ID, got[0].ID)
+	assert.Equal(t, []string{"Go"}, got[0].RequiredSkills)
+}

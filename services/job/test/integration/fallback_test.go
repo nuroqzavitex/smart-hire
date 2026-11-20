@@ -37,7 +37,7 @@ func TestListOpen_FallbackWhenOpenSearchStops(t *testing.T) {
 	osDoAt(t, url, "/jobs/_refresh")
 
 	guarded := opensearch.NewGuarded(c, 2, time.Minute, 500*time.Millisecond)
-	svc := bootstrap.NewService(pool, guarded, nil)
+	svc := bootstrap.NewService(pool, guarded, nil, nil)
 
 	p, err := svc.ListOpen(ctx, app.SearchFilter{Query: "backend"}, app.PageRequest{})
 	require.NoError(t, err)

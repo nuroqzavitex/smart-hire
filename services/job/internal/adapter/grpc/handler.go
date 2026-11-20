@@ -28,6 +28,8 @@ type UseCases interface {
 	Get(ctx context.Context, id uuid.UUID) (domain.Job, error)
 	ListOpen(ctx context.Context, f app.SearchFilter, pr app.PageRequest) (app.Page, error)
 	ListMine(ctx context.Context, status *domain.Status, pr app.PageRequest) (app.Page, error)
+	ListMatchedCandidates(ctx context.Context, jobID uuid.UUID, topK int) (app.MatchList, error)
+	BatchGetJobs(ctx context.Context, ids []uuid.UUID) ([]domain.Job, error)
 }
 
 // Handler implements jobv1.JobServiceServer.
@@ -131,4 +133,38 @@ func (h *Handler) ListMyJobs(ctx context.Context, req *jobv1.ListMyJobsRequest) 
 		return nil, err
 	}
 	return pageToProto(page), nil
+}
+
+// ListMatchedCandidates returns the AI ranking of candidates for the caller's job.
+func (h *Handler) ListMatchedCandidates(ctx context.Context, req *jobv1.ListMatchedCandidatesRequest) (*jobv1.ListMatchedCandidatesResponse, error) {
+	id, err := parseID(req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	list, err := h.uc.ListMatchedCandidates(ctx, id, int(req.GetTopK()))
+	if err != nil {
+		return nil, err
+	}
+	return matchesToProto(list), nil
+}
+
+// BatchGetJobs returns open jobs by id (internal, used by the candidate service).
+func (h *Handler) BatchGetJobs(ctx context.Context, req *jobv1.BatchGetJobsRequest) (*jobv1.BatchGetJobsResponse, error) {
+	ids := make([]uuid.UUID, len(req.GetIds()))
+	for i, raw := range req.GetIds() {
+		id, err := parseID(raw)
+		if err != nil {
+			return nil, err
+		}
+		ids[i] = id
+	}
+	jobs, err := h.uc.BatchGetJobs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := &jobv1.BatchGetJobsResponse{Jobs: make([]*jobv1.Job, len(jobs))}
+	for i, j := range jobs {
+		out.Jobs[i] = toProto(j)
+	}
+	return out, nil
 }

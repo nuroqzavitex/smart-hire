@@ -48,6 +48,19 @@ func (r *JobRepo) Get(ctx context.Context, id uuid.UUID) (domain.Job, error) {
 	return toJob(row), nil
 }
 
+// GetOpenByIDs returns the open, non-deleted jobs among ids.
+func (r *JobRepo) GetOpenByIDs(ctx context.Context, ids []uuid.UUID) ([]domain.Job, error) {
+	rows, err := queries(ctx, r.pool).GetOpenJobsByIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("get open jobs by ids: %w", err)
+	}
+	out := make([]domain.Job, len(rows))
+	for i, row := range rows {
+		out[i] = toJob(sqlc.GetJobRow(row))
+	}
+	return out, nil
+}
+
 // GetForUpdate is Get with a row lock (SELECT ... FOR UPDATE); call it inside a tx.
 func (r *JobRepo) GetForUpdate(ctx context.Context, id uuid.UUID) (domain.Job, error) {
 	row, err := queries(ctx, r.pool).GetJobForUpdate(ctx, id)

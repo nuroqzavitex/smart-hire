@@ -189,3 +189,27 @@ func fromInt32(v *int32) *int {
 	x := int(*v)
 	return &x
 }
+
+func matchesToProto(l app.MatchList) *jobv1.ListMatchedCandidatesResponse {
+	out := &jobv1.ListMatchedCandidatesResponse{
+		ModelVersion: l.ModelVersion,
+		Candidates:   make([]*jobv1.MatchedCandidate, len(l.Candidates)),
+	}
+	for i, c := range l.Candidates {
+		b := c.Breakdown
+		out.Candidates[i] = &jobv1.MatchedCandidate{
+			CandidateId: c.CandidateID.String(),
+			CvId:        c.CVID.String(),
+			Score:       c.Score,
+			Breakdown: &jobv1.MatchBreakdown{
+				SemanticSimilarity:    b.SemanticSimilarity,
+				RequiredSkillCoverage: b.RequiredSkillCoverage,
+				ExperienceFit:         b.ExperienceFit,
+				LocationFit:           b.LocationFit,
+				MatchedSkills:         b.MatchedSkills,
+				MissingSkills:         b.MissingSkills,
+			},
+		}
+	}
+	return out
+}

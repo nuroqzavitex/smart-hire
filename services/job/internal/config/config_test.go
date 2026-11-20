@@ -48,6 +48,16 @@ func TestLoad_SearchDefaults(t *testing.T) {
 	assert.Equal(t, 30*time.Second, c.SearchBreakerOpen)
 }
 
+func TestLoad_AIDefaults(t *testing.T) {
+	t.Setenv("JOB_DB_DSN", "postgres://x")
+	c, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "ai-api:9100", c.AIAddr)
+	assert.Equal(t, 2*time.Second, c.AITimeout)
+	assert.Equal(t, uint32(5), c.AIBreakerFailures)
+	assert.Equal(t, 30*time.Second, c.AIBreakerOpen)
+}
+
 func TestLoadProjector_Defaults(t *testing.T) {
 	t.Setenv("JOB_DB_DSN", "postgres://x")
 	c, err := config.LoadProjector()
