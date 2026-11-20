@@ -301,3 +301,20 @@ func TestPublicMethods(t *testing.T) {
 		"/smarthire.job.v1.JobService/ListJobs",
 	}, jobgrpc.PublicMethods)
 }
+
+func TestHandler_ListJobsMapsFacetsAndDegraded(t *testing.T) {
+	e := newEnv(t)
+	e.uc.page = app.Page{Degraded: true, Facets: app.Facets{
+		Skills:    []app.FacetCount{{Value: "go", Count: 3}},
+		Locations: []app.FacetCount{{Value: "ha noi", Count: 2}},
+		Levels:    []app.FacetCount{{Value: "senior", Count: 1}},
+	}}
+	got, err := e.client.ListJobs(context.Background(), &jobv1.ListJobsRequest{})
+	require.NoError(t, err)
+	assert.True(t, got.GetDegraded())
+	require.Len(t, got.GetFacets().GetSkills(), 1)
+	assert.Equal(t, "go", got.GetFacets().GetSkills()[0].GetValue())
+	assert.Equal(t, int64(3), got.GetFacets().GetSkills()[0].GetCount())
+	assert.Equal(t, "ha noi", got.GetFacets().GetLocations()[0].GetValue())
+	assert.Equal(t, "senior", got.GetFacets().GetLevels()[0].GetValue())
+}

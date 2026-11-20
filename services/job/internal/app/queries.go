@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
@@ -22,10 +25,14 @@ type PageRequest struct {
 	Token string
 }
 
-// Page is one page of jobs; NextToken is empty on the last page.
+// Page is one page of jobs; NextToken is empty on the last page. Facets
+// are set only by the read model; Degraded means the Postgres fallback served
+// a read-model query.
 type Page struct {
 	Jobs      []domain.Job
 	NextToken string
+	Facets    Facets
+	Degraded  bool
 }
 
 func (pr PageRequest) size() (int, error) {
@@ -56,7 +63,10 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (domain.Job, error) {
 	return domain.Job{}, domain.ErrJobNotFound
 }
 
-// ListOpen pages through open jobs matching the filter.
+// ListOpen pages through open jobs matching the filter. It reads the
+// OpenSearch read model when one is configured and falls back to Postgres
+// (Degraded) when that fails; a page token from the other backend restarts
+// at page 1 (ADR 0009).
 func (s *Service) ListOpen(ctx context.Context, f SearchFilter, pr PageRequest) (Page, error) {
 	size, err := pr.size()
 	if err != nil {
@@ -64,17 +74,56 @@ func (s *Service) ListOpen(ctx context.Context, f SearchFilter, pr PageRequest) 
 	}
 	f.Query = strings.TrimSpace(f.Query)
 	f.Skills = lowerSkills(f.Skills)
-	var after *Cursor
+	var tok *searchToken
 	if pr.Token != "" {
-		c, err := DecodeCursor(pr.Token)
+		t, err := decodeSearchToken(pr.Token)
 		if err != nil {
 			return Page{}, err
 		}
-		// A cursor carries a rank only for text queries; reject mismatches.
-		if (c.Rank != nil) != (f.Query != "") {
-			return Page{}, apperr.New(apperr.ErrValidation, "invalid page token")
+		tok = &t
+	}
+	if s.Search != nil {
+		page, err := s.listFromReadModel(ctx, f, size, tok)
+		if err == nil || errors.Is(err, apperr.ErrValidation) {
+			return page, err
 		}
-		after = &c
+		s.Logger.WarnContext(ctx, "job search read model failed, using postgres", "error_type", fmt.Sprintf("%T", err))
+		page, err = s.listFromPostgres(ctx, f, size, tok)
+		page.Degraded = true
+		return page, err
+	}
+	return s.listFromPostgres(ctx, f, size, tok)
+}
+
+func (s *Service) listFromReadModel(ctx context.Context, f SearchFilter, size int, tok *searchToken) (Page, error) {
+	textQuery := f.Query != ""
+	var after json.RawMessage
+	if tok != nil && tok.Backend == backendOpenSearch {
+		// Sort keys differ with and without a text query.
+		if tok.Text != textQuery {
+			return Page{}, errBadToken
+		}
+		after = tok.After
+	}
+	res, err := s.Search.Search(ctx, SearchQuery{Filter: f, After: after, Size: size})
+	if err != nil {
+		return Page{}, err
+	}
+	page := Page{Jobs: res.Jobs, Facets: res.Facets}
+	if res.Next != nil {
+		page.NextToken = encodeSearchToken(searchToken{Backend: backendOpenSearch, Text: textQuery, After: res.Next})
+	}
+	return page, nil
+}
+
+func (s *Service) listFromPostgres(ctx context.Context, f SearchFilter, size int, tok *searchToken) (Page, error) {
+	var after *Cursor
+	if tok != nil && tok.Backend == backendPostgres {
+		// A cursor carries a rank only for text queries; reject mismatches.
+		if (tok.Cursor.Rank != nil) != (f.Query != "") {
+			return Page{}, errBadToken
+		}
+		after = tok.Cursor
 	}
 	hits, err := s.Jobs.Search(ctx, f, after, size+1)
 	if err != nil {
@@ -98,7 +147,7 @@ func (s *Service) ListOpen(ctx context.Context, f SearchFilter, pr PageRequest) 
 			r := last.Rank
 			c.Rank = &r
 		}
-		page.NextToken = EncodeCursor(c)
+		page.NextToken = encodeSearchToken(searchToken{Backend: backendPostgres, Cursor: &c})
 	}
 	return page, nil
 }

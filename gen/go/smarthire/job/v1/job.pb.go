@@ -875,6 +875,13 @@ type ListJobsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Jobs          []*Job                 `protobuf:"bytes,1,rep,name=jobs,proto3" json:"jobs,omitempty"`
 	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	// Bucket counts over the matching open jobs (ListJobs from the search read
+	// model only; empty for ListMyJobs and when degraded). Values are normalized
+	// (lowercase, without diacritics).
+	Facets *ListJobsFacets `protobuf:"bytes,3,opt,name=facets,proto3" json:"facets,omitempty"`
+	// True when the search read model was unavailable and ListJobs was served
+	// from the Postgres fallback (no facets, simpler ranking).
+	Degraded      bool `protobuf:"varint,4,opt,name=degraded,proto3" json:"degraded,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -921,6 +928,132 @@ func (x *ListJobsResponse) GetNextPageToken() string {
 		return x.NextPageToken
 	}
 	return ""
+}
+
+func (x *ListJobsResponse) GetFacets() *ListJobsFacets {
+	if x != nil {
+		return x.Facets
+	}
+	return nil
+}
+
+func (x *ListJobsResponse) GetDegraded() bool {
+	if x != nil {
+		return x.Degraded
+	}
+	return false
+}
+
+type Facet struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Value         string                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
+	Count         int64                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Facet) Reset() {
+	*x = Facet{}
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Facet) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Facet) ProtoMessage() {}
+
+func (x *Facet) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Facet.ProtoReflect.Descriptor instead.
+func (*Facet) Descriptor() ([]byte, []int) {
+	return file_smarthire_job_v1_job_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *Facet) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *Facet) GetCount() int64 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+type ListJobsFacets struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Skills        []*Facet               `protobuf:"bytes,1,rep,name=skills,proto3" json:"skills,omitempty"`
+	Locations     []*Facet               `protobuf:"bytes,2,rep,name=locations,proto3" json:"locations,omitempty"`
+	Levels        []*Facet               `protobuf:"bytes,3,rep,name=levels,proto3" json:"levels,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListJobsFacets) Reset() {
+	*x = ListJobsFacets{}
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListJobsFacets) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListJobsFacets) ProtoMessage() {}
+
+func (x *ListJobsFacets) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListJobsFacets.ProtoReflect.Descriptor instead.
+func (*ListJobsFacets) Descriptor() ([]byte, []int) {
+	return file_smarthire_job_v1_job_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListJobsFacets) GetSkills() []*Facet {
+	if x != nil {
+		return x.Skills
+	}
+	return nil
+}
+
+func (x *ListJobsFacets) GetLocations() []*Facet {
+	if x != nil {
+		return x.Locations
+	}
+	return nil
+}
+
+func (x *ListJobsFacets) GetLevels() []*Facet {
+	if x != nil {
+		return x.Levels
+	}
+	return nil
 }
 
 var File_smarthire_job_v1_job_proto protoreflect.FileDescriptor
@@ -1012,10 +1145,19 @@ const file_smarthire_job_v1_job_proto_rawDesc = "" +
 	"\x06status\x18\x01 \x01(\x0e2\x1b.smarthire.job.v1.JobStatusB\b\xbaH\x05\x82\x01\x02\x10\x01R\x06status\x12&\n" +
 	"\tpage_size\x18\x02 \x01(\x05B\t\xbaH\x06\x1a\x04\x18d(\x00R\bpageSize\x12'\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x04R\tpageToken\"e\n" +
+	"page_token\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x04R\tpageToken\"\xbb\x01\n" +
 	"\x10ListJobsResponse\x12)\n" +
 	"\x04jobs\x18\x01 \x03(\v2\x15.smarthire.job.v1.JobR\x04jobs\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*\x91\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x128\n" +
+	"\x06facets\x18\x03 \x01(\v2 .smarthire.job.v1.ListJobsFacetsR\x06facets\x12\x1a\n" +
+	"\bdegraded\x18\x04 \x01(\bR\bdegraded\"3\n" +
+	"\x05Facet\x12\x14\n" +
+	"\x05value\x18\x01 \x01(\tR\x05value\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x03R\x05count\"\xa9\x01\n" +
+	"\x0eListJobsFacets\x12/\n" +
+	"\x06skills\x18\x01 \x03(\v2\x17.smarthire.job.v1.FacetR\x06skills\x125\n" +
+	"\tlocations\x18\x02 \x03(\v2\x17.smarthire.job.v1.FacetR\tlocations\x12/\n" +
+	"\x06levels\x18\x03 \x03(\v2\x17.smarthire.job.v1.FacetR\x06levels*\x91\x01\n" +
 	"\bJobLevel\x12\x19\n" +
 	"\x15JOB_LEVEL_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10JOB_LEVEL_INTERN\x10\x01\x12\x14\n" +
@@ -1056,7 +1198,7 @@ func file_smarthire_job_v1_job_proto_rawDescGZIP() []byte {
 }
 
 var file_smarthire_job_v1_job_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_smarthire_job_v1_job_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_smarthire_job_v1_job_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_smarthire_job_v1_job_proto_goTypes = []any{
 	(JobLevel)(0),                 // 0: smarthire.job.v1.JobLevel
 	(JobStatus)(0),                // 1: smarthire.job.v1.JobStatus
@@ -1071,15 +1213,17 @@ var file_smarthire_job_v1_job_proto_goTypes = []any{
 	(*ListJobsRequest)(nil),       // 10: smarthire.job.v1.ListJobsRequest
 	(*ListMyJobsRequest)(nil),     // 11: smarthire.job.v1.ListMyJobsRequest
 	(*ListJobsResponse)(nil),      // 12: smarthire.job.v1.ListJobsResponse
-	(*timestamppb.Timestamp)(nil), // 13: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 14: google.protobuf.Empty
+	(*Facet)(nil),                 // 13: smarthire.job.v1.Facet
+	(*ListJobsFacets)(nil),        // 14: smarthire.job.v1.ListJobsFacets
+	(*timestamppb.Timestamp)(nil), // 15: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),         // 16: google.protobuf.Empty
 }
 var file_smarthire_job_v1_job_proto_depIdxs = []int32{
 	0,  // 0: smarthire.job.v1.Job.level:type_name -> smarthire.job.v1.JobLevel
 	1,  // 1: smarthire.job.v1.Job.status:type_name -> smarthire.job.v1.JobStatus
-	13, // 2: smarthire.job.v1.Job.created_at:type_name -> google.protobuf.Timestamp
-	13, // 3: smarthire.job.v1.Job.updated_at:type_name -> google.protobuf.Timestamp
-	13, // 4: smarthire.job.v1.Job.published_at:type_name -> google.protobuf.Timestamp
+	15, // 2: smarthire.job.v1.Job.created_at:type_name -> google.protobuf.Timestamp
+	15, // 3: smarthire.job.v1.Job.updated_at:type_name -> google.protobuf.Timestamp
+	15, // 4: smarthire.job.v1.Job.published_at:type_name -> google.protobuf.Timestamp
 	0,  // 5: smarthire.job.v1.CreateJobRequest.level:type_name -> smarthire.job.v1.JobLevel
 	2,  // 6: smarthire.job.v1.UpdateJobRequest.required_skills:type_name -> smarthire.job.v1.StringList
 	2,  // 7: smarthire.job.v1.UpdateJobRequest.nice_to_have_skills:type_name -> smarthire.job.v1.StringList
@@ -1087,27 +1231,31 @@ var file_smarthire_job_v1_job_proto_depIdxs = []int32{
 	0,  // 9: smarthire.job.v1.ListJobsRequest.level:type_name -> smarthire.job.v1.JobLevel
 	1,  // 10: smarthire.job.v1.ListMyJobsRequest.status:type_name -> smarthire.job.v1.JobStatus
 	3,  // 11: smarthire.job.v1.ListJobsResponse.jobs:type_name -> smarthire.job.v1.Job
-	4,  // 12: smarthire.job.v1.JobService.CreateJob:input_type -> smarthire.job.v1.CreateJobRequest
-	5,  // 13: smarthire.job.v1.JobService.UpdateJob:input_type -> smarthire.job.v1.UpdateJobRequest
-	6,  // 14: smarthire.job.v1.JobService.PublishJob:input_type -> smarthire.job.v1.PublishJobRequest
-	7,  // 15: smarthire.job.v1.JobService.CloseJob:input_type -> smarthire.job.v1.CloseJobRequest
-	8,  // 16: smarthire.job.v1.JobService.DeleteJob:input_type -> smarthire.job.v1.DeleteJobRequest
-	9,  // 17: smarthire.job.v1.JobService.GetJob:input_type -> smarthire.job.v1.GetJobRequest
-	10, // 18: smarthire.job.v1.JobService.ListJobs:input_type -> smarthire.job.v1.ListJobsRequest
-	11, // 19: smarthire.job.v1.JobService.ListMyJobs:input_type -> smarthire.job.v1.ListMyJobsRequest
-	3,  // 20: smarthire.job.v1.JobService.CreateJob:output_type -> smarthire.job.v1.Job
-	3,  // 21: smarthire.job.v1.JobService.UpdateJob:output_type -> smarthire.job.v1.Job
-	3,  // 22: smarthire.job.v1.JobService.PublishJob:output_type -> smarthire.job.v1.Job
-	3,  // 23: smarthire.job.v1.JobService.CloseJob:output_type -> smarthire.job.v1.Job
-	14, // 24: smarthire.job.v1.JobService.DeleteJob:output_type -> google.protobuf.Empty
-	3,  // 25: smarthire.job.v1.JobService.GetJob:output_type -> smarthire.job.v1.Job
-	12, // 26: smarthire.job.v1.JobService.ListJobs:output_type -> smarthire.job.v1.ListJobsResponse
-	12, // 27: smarthire.job.v1.JobService.ListMyJobs:output_type -> smarthire.job.v1.ListJobsResponse
-	20, // [20:28] is the sub-list for method output_type
-	12, // [12:20] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	14, // 12: smarthire.job.v1.ListJobsResponse.facets:type_name -> smarthire.job.v1.ListJobsFacets
+	13, // 13: smarthire.job.v1.ListJobsFacets.skills:type_name -> smarthire.job.v1.Facet
+	13, // 14: smarthire.job.v1.ListJobsFacets.locations:type_name -> smarthire.job.v1.Facet
+	13, // 15: smarthire.job.v1.ListJobsFacets.levels:type_name -> smarthire.job.v1.Facet
+	4,  // 16: smarthire.job.v1.JobService.CreateJob:input_type -> smarthire.job.v1.CreateJobRequest
+	5,  // 17: smarthire.job.v1.JobService.UpdateJob:input_type -> smarthire.job.v1.UpdateJobRequest
+	6,  // 18: smarthire.job.v1.JobService.PublishJob:input_type -> smarthire.job.v1.PublishJobRequest
+	7,  // 19: smarthire.job.v1.JobService.CloseJob:input_type -> smarthire.job.v1.CloseJobRequest
+	8,  // 20: smarthire.job.v1.JobService.DeleteJob:input_type -> smarthire.job.v1.DeleteJobRequest
+	9,  // 21: smarthire.job.v1.JobService.GetJob:input_type -> smarthire.job.v1.GetJobRequest
+	10, // 22: smarthire.job.v1.JobService.ListJobs:input_type -> smarthire.job.v1.ListJobsRequest
+	11, // 23: smarthire.job.v1.JobService.ListMyJobs:input_type -> smarthire.job.v1.ListMyJobsRequest
+	3,  // 24: smarthire.job.v1.JobService.CreateJob:output_type -> smarthire.job.v1.Job
+	3,  // 25: smarthire.job.v1.JobService.UpdateJob:output_type -> smarthire.job.v1.Job
+	3,  // 26: smarthire.job.v1.JobService.PublishJob:output_type -> smarthire.job.v1.Job
+	3,  // 27: smarthire.job.v1.JobService.CloseJob:output_type -> smarthire.job.v1.Job
+	16, // 28: smarthire.job.v1.JobService.DeleteJob:output_type -> google.protobuf.Empty
+	3,  // 29: smarthire.job.v1.JobService.GetJob:output_type -> smarthire.job.v1.Job
+	12, // 30: smarthire.job.v1.JobService.ListJobs:output_type -> smarthire.job.v1.ListJobsResponse
+	12, // 31: smarthire.job.v1.JobService.ListMyJobs:output_type -> smarthire.job.v1.ListJobsResponse
+	24, // [24:32] is the sub-list for method output_type
+	16, // [16:24] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_smarthire_job_v1_job_proto_init() }
@@ -1125,7 +1273,7 @@ func file_smarthire_job_v1_job_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_smarthire_job_v1_job_proto_rawDesc), len(file_smarthire_job_v1_job_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

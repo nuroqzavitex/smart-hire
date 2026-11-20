@@ -153,9 +153,23 @@ func filterFromProto(req *jobv1.ListJobsRequest) app.SearchFilter {
 }
 
 func pageToProto(p app.Page) *jobv1.ListJobsResponse {
-	out := &jobv1.ListJobsResponse{Jobs: make([]*jobv1.Job, len(p.Jobs)), NextPageToken: p.NextToken}
+	out := &jobv1.ListJobsResponse{
+		Jobs: make([]*jobv1.Job, len(p.Jobs)), NextPageToken: p.NextToken, Degraded: p.Degraded,
+		Facets: &jobv1.ListJobsFacets{
+			Skills: facetsToProto(p.Facets.Skills), Locations: facetsToProto(p.Facets.Locations),
+			Levels: facetsToProto(p.Facets.Levels),
+		},
+	}
 	for i, j := range p.Jobs {
 		out.Jobs[i] = toProto(j)
+	}
+	return out
+}
+
+func facetsToProto(in []app.FacetCount) []*jobv1.Facet {
+	out := make([]*jobv1.Facet, len(in))
+	for i, f := range in {
+		out[i] = &jobv1.Facet{Value: f.Value, Count: f.Count}
 	}
 	return out
 }

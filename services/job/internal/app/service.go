@@ -13,6 +13,8 @@ type Deps struct {
 	Jobs   JobRepo
 	Outbox OutboxWriter
 	Tx     TxManager
+	// Search is the read model for ListOpen; nil means Postgres only.
+	Search SearchBackend
 	Now    func() time.Time
 	NewID  func() uuid.UUID
 	Logger *slog.Logger

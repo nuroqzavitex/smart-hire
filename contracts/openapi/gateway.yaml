@@ -204,6 +204,14 @@ definitions:
       title:
         type: string
     type: object
+  v1Facet:
+    properties:
+      count:
+        format: int64
+        type: string
+      value:
+        type: string
+    type: object
   v1Job:
     properties:
       created_at:
@@ -265,8 +273,37 @@ definitions:
     - JOB_STATUS_OPEN
     - JOB_STATUS_CLOSED
     type: string
+  v1ListJobsFacets:
+    properties:
+      levels:
+        items:
+          $ref: '#/definitions/v1Facet'
+          type: object
+        type: array
+      locations:
+        items:
+          $ref: '#/definitions/v1Facet'
+          type: object
+        type: array
+      skills:
+        items:
+          $ref: '#/definitions/v1Facet'
+          type: object
+        type: array
+    type: object
   v1ListJobsResponse:
     properties:
+      degraded:
+        description: |-
+          True when the search read model was unavailable and ListJobs was served
+          from the Postgres fallback (no facets, simpler ranking).
+        type: boolean
+      facets:
+        $ref: '#/definitions/v1ListJobsFacets'
+        description: |-
+          Bucket counts over the matching open jobs (ListJobs from the search read
+          model only; empty for ListMyJobs and when degraded). Values are normalized
+          (lowercase, without diacritics).
       jobs:
         items:
           $ref: '#/definitions/v1Job'

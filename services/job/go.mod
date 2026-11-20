@@ -10,6 +10,7 @@ require (
 	github.com/nuroqzavitex/smarthire/gen/go v0.0.0-00010101000000-000000000000
 	github.com/nuroqzavitex/smarthire/pkg v0.0.0
 	github.com/opensearch-project/opensearch-go/v4 v4.8.1
+	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.45.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.45.0

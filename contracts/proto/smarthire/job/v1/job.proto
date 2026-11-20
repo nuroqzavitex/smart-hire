@@ -113,4 +113,22 @@ message ListMyJobsRequest {
 message ListJobsResponse {
   repeated Job jobs = 1;
   string next_page_token = 2;
+  // Bucket counts over the matching open jobs (ListJobs from the search read
+  // model only; empty for ListMyJobs and when degraded). Values are normalized
+  // (lowercase, without diacritics).
+  ListJobsFacets facets = 3;
+  // True when the search read model was unavailable and ListJobs was served
+  // from the Postgres fallback (no facets, simpler ranking).
+  bool degraded = 4;
+}
+
+message Facet {
+  string value = 1;
+  int64 count = 2;
+}
+
+message ListJobsFacets {
+  repeated Facet skills = 1;
+  repeated Facet locations = 2;
+  repeated Facet levels = 3;
 }

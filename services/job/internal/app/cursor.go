@@ -31,3 +31,52 @@ func DecodeCursor(s string) (Cursor, error) {
 	}
 	return c, nil
 }
+
+var errBadToken = apperr.New(apperr.ErrValidation, "invalid page token")
+
+// Search backends that issue ListOpen page tokens.
+const (
+	backendOpenSearch = "os"
+	backendPostgres   = "pg"
+)
+
+// searchToken is a ListOpen page token: an OpenSearch search_after position
+// (with whether it came from a text query) or a Postgres keyset cursor.
+type searchToken struct {
+	Backend string          `json:"b"`
+	Text    bool            `json:"q,omitempty"`
+	After   json.RawMessage `json:"sa,omitempty"`
+	Cursor  *Cursor         `json:"c,omitempty"`
+}
+
+func encodeSearchToken(t searchToken) string {
+	b, _ := json.Marshal(t) // only marshalable fields
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// decodeSearchToken parses a ListOpen token; anything malformed is
+// ErrValidation.
+func decodeSearchToken(s string) (searchToken, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return searchToken{}, errBadToken
+	}
+	var t searchToken
+	if err := json.Unmarshal(raw, &t); err != nil {
+		return searchToken{}, errBadToken
+	}
+	switch t.Backend {
+	case backendOpenSearch:
+		var after []json.RawMessage
+		if json.Unmarshal(t.After, &after) != nil || len(after) == 0 {
+			return searchToken{}, errBadToken
+		}
+	case backendPostgres:
+		if t.Cursor == nil || t.Cursor.ID == uuid.Nil || t.Cursor.At.IsZero() {
+			return searchToken{}, errBadToken
+		}
+	default:
+		return searchToken{}, errBadToken
+	}
+	return t, nil
+}

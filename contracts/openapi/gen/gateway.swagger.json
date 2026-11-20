@@ -907,6 +907,18 @@
         }
       }
     },
+    "v1Facet": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "count": {
+          "type": "string",
+          "format": "int64"
+        }
+      }
+    },
     "v1Job": {
       "type": "object",
       "properties": {
@@ -991,6 +1003,32 @@
       ],
       "default": "JOB_STATUS_UNSPECIFIED"
     },
+    "v1ListJobsFacets": {
+      "type": "object",
+      "properties": {
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Facet"
+          }
+        },
+        "locations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Facet"
+          }
+        },
+        "levels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Facet"
+          }
+        }
+      }
+    },
     "v1ListJobsResponse": {
       "type": "object",
       "properties": {
@@ -1003,6 +1041,14 @@
         },
         "next_page_token": {
           "type": "string"
+        },
+        "facets": {
+          "$ref": "#/definitions/v1ListJobsFacets",
+          "description": "Bucket counts over the matching open jobs (ListJobs from the search read\nmodel only; empty for ListMyJobs and when degraded). Values are normalized\n(lowercase, without diacritics)."
+        },
+        "degraded": {
+          "type": "boolean",
+          "description": "True when the search read model was unavailable and ListJobs was served\nfrom the Postgres fallback (no facets, simpler ranking)."
         }
       }
     },
