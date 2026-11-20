@@ -16,7 +16,7 @@
     "payload": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["job_id", "recruiter_id", "title", "description", "location", "required_skills", "nice_to_have_skills", "level", "salary_min", "salary_max", "status", "version"],
+      "required": ["job_id", "recruiter_id", "title", "description", "location", "required_skills", "nice_to_have_skills", "level", "salary_min", "salary_max", "status", "version", "published_at"],
       "properties": {
         "job_id": { "type": "string", "format": "uuid" },
         "recruiter_id": { "type": "string", "format": "uuid" },
@@ -29,7 +29,8 @@
         "salary_min": { "type": ["integer", "null"], "minimum": 0 },
         "salary_max": { "type": ["integer", "null"], "minimum": 0 },
         "status": { "enum": ["draft", "open", "closed"] },
-        "version": { "type": "integer", "minimum": 1 }
+        "version": { "type": "integer", "minimum": 1 },
+        "published_at": { "type": ["string", "null"], "format": "date-time" }
       }
     }
   }

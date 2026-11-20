@@ -19,18 +19,19 @@ const (
 )
 
 type jobPayload struct {
-	JobID            string   `json:"job_id"`
-	RecruiterID      string   `json:"recruiter_id"`
-	Title            string   `json:"title"`
-	Description      string   `json:"description"`
-	RequiredSkills   []string `json:"required_skills"`
-	NiceToHaveSkills []string `json:"nice_to_have_skills"`
-	Level            string   `json:"level"`
-	Location         string   `json:"location"`
-	SalaryMin        *int     `json:"salary_min"`
-	SalaryMax        *int     `json:"salary_max"`
-	Status           string   `json:"status"`
-	Version          int64    `json:"version"`
+	JobID            string     `json:"job_id"`
+	RecruiterID      string     `json:"recruiter_id"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description"`
+	RequiredSkills   []string   `json:"required_skills"`
+	NiceToHaveSkills []string   `json:"nice_to_have_skills"`
+	Level            string     `json:"level"`
+	Location         string     `json:"location"`
+	SalaryMin        *int       `json:"salary_min"`
+	SalaryMax        *int       `json:"salary_max"`
+	Status           string     `json:"status"`
+	Version          int64      `json:"version"`
+	PublishedAt      *time.Time `json:"published_at"`
 }
 
 type jobRefPayload struct {
@@ -46,7 +47,16 @@ func payloadOf(j domain.Job) jobPayload {
 		Level: string(j.Level), Location: j.Location,
 		SalaryMin: j.SalaryMin, SalaryMax: j.SalaryMax,
 		Status: string(j.Status), Version: j.Version,
+		PublishedAt: utcPtr(j.PublishedAt),
 	}
+}
+
+func utcPtr(t *time.Time) *time.Time {
+	if t == nil {
+		return nil
+	}
+	u := t.UTC()
+	return &u
 }
 
 func nonNil(s []string) []string {

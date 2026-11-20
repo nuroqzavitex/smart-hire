@@ -21,7 +21,7 @@ const testUUID = "0b0f4a52-7a0b-4d0c-9a52-0e7f6b1c2d3e"
 var jobPayload = map[string]any{
 	"job_id": testUUID, "recruiter_id": testUUID, "title": "Go dev", "description": "build services",
 	"location": "Hanoi", "required_skills": []string{"go"}, "nice_to_have_skills": []string{},
-	"level": "senior", "salary_min": 1000, "salary_max": nil, "status": "open", "version": 1,
+	"level": "senior", "salary_min": 1000, "salary_max": nil, "status": "open", "version": 1, "published_at": "2026-11-20T10:00:00Z",
 }
 
 func samplePayload(typ string) any {
