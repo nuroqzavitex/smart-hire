@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -55,4 +56,35 @@ type JobRepo interface {
 	// Search returns open, non-deleted jobs; Rank is 0 when Query is empty.
 	Search(ctx context.Context, f SearchFilter, after *Cursor, limit int) ([]SearchHit, error)
 	ListByRecruiter(ctx context.Context, recruiterID uuid.UUID, status *domain.Status, after *Cursor, limit int) ([]domain.Job, error)
+}
+
+// FacetCount is one bucket of a search facet.
+type FacetCount struct {
+	Value string
+	Count int64
+}
+
+// Facets are bucket counts over the matching open jobs (read model only).
+type Facets struct {
+	Skills, Locations, Levels []FacetCount
+}
+
+// SearchQuery asks the read model for one page. After is the opaque
+// position returned as SearchResult.Next by the previous page.
+type SearchQuery struct {
+	Filter SearchFilter
+	After  json.RawMessage
+	Size   int
+}
+
+// SearchResult is one page from the read model; Next is nil on the last page.
+type SearchResult struct {
+	Jobs   []domain.Job
+	Next   json.RawMessage
+	Facets Facets
+}
+
+// SearchBackend is the job search read model (OpenSearch, ADR 0009).
+type SearchBackend interface {
+	Search(ctx context.Context, q SearchQuery) (SearchResult, error)
 }
