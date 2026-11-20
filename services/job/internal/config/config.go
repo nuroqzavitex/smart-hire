@@ -21,6 +21,32 @@ type Config struct {
 	KafkaBrokers   []string      `env:"KAFKA_BROKERS" envDefault:"redpanda:9092" envSeparator:","`
 	OutboxInterval time.Duration `env:"OUTBOX_INTERVAL" envDefault:"500ms"`
 	LogLevel       string        `env:"LOG_LEVEL" envDefault:"info"`
+
+	// Search read model (ADR 0009). OpenSearch being down at startup is not
+	// fatal: ListJobs falls back to Postgres.
+	OpenSearchURL         string        `env:"OPENSEARCH_URL" envDefault:"http://opensearch:9200"`
+	SearchTimeout         time.Duration `env:"SEARCH_TIMEOUT" envDefault:"2s"`
+	SearchBreakerFailures uint32        `env:"SEARCH_BREAKER_FAILURES" envDefault:"5"`
+	SearchBreakerOpen     time.Duration `env:"SEARCH_BREAKER_OPEN" envDefault:"30s"`
+}
+
+// ProjectorConfig configures cmd/projector (consumer, rebuild, reconcile).
+type ProjectorConfig struct {
+	DBDSN         string        `env:"DB_DSN,required"`
+	KafkaBrokers  []string      `env:"KAFKA_BROKERS" envDefault:"redpanda:9092" envSeparator:","`
+	OpenSearchURL string        `env:"OPENSEARCH_URL" envDefault:"http://opensearch:9200"`
+	HTTPPort      int           `env:"PROJECTOR_HTTP_PORT" envDefault:"8012"`
+	AliasTTL      time.Duration `env:"PROJECTOR_ALIAS_TTL" envDefault:"5s"`
+	LogLevel      string        `env:"LOG_LEVEL" envDefault:"info"`
+}
+
+// LoadProjector reads the projector configuration from JOB_* variables.
+func LoadProjector() (ProjectorConfig, error) {
+	var c ProjectorConfig
+	if err := config.Load(EnvPrefix, &c); err != nil {
+		return ProjectorConfig{}, err
+	}
+	return c, nil
 }
 
 // Load reads the server configuration from JOB_* variables.

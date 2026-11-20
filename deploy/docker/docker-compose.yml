@@ -77,6 +77,7 @@ services:
       JOB_DB_DSN: postgres://job_svc:${JOB_DB_PASSWORD:?set JOB_DB_PASSWORD in .env}@postgres:5432/job_db?sslmode=disable
       JOB_JWKS_URL: http://auth:8001/.well-known/jwks.json
       JOB_KAFKA_BROKERS: redpanda:9092
+      JOB_OPENSEARCH_URL: http://opensearch:9200
       JOB_LOG_LEVEL: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
@@ -87,9 +88,33 @@ services:
       # Job retries the JWKS fetch while auth starts.
       auth:
         condition: service_started
+      # Not required to start (ListJobs falls back to Postgres), but ordered
+      # so a fresh stack serves search from the read model.
+      opensearch:
+        condition: service_healthy
     # Distroless image: no shell for a healthcheck. /readyz answers before
     # gRPC listens, so nothing gates on it: the gateway dials lazily and
     # `make up` waits until GET /v1/jobs succeeds end to end.
+    restart: unless-stopped
+
+  # Job read-model projector (ADR 0009): job.* events -> OpenSearch. Also
+  # runs one-shot `rebuild` / `reconcile` (make search-rebuild|search-reconcile).
+  job-projector:
+    image: smarthire/job:dev
+    entrypoint: ["/projector"]
+    environment:
+      JOB_DB_DSN: postgres://job_svc:${JOB_DB_PASSWORD:?set JOB_DB_PASSWORD in .env}@postgres:5432/job_db?sslmode=disable
+      JOB_KAFKA_BROKERS: redpanda:9092
+      JOB_OPENSEARCH_URL: http://opensearch:9200
+      JOB_LOG_LEVEL: info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      job:
+        condition: service_started
+      opensearch:
+        condition: service_healthy
+      topics-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   candidate-migrate:

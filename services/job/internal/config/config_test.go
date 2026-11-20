@@ -37,3 +37,30 @@ func TestLoad_RequiresDSN(t *testing.T) {
 	_, err := config.Load()
 	require.Error(t, err)
 }
+
+func TestLoad_SearchDefaults(t *testing.T) {
+	t.Setenv("JOB_DB_DSN", "postgres://x")
+	c, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "http://opensearch:9200", c.OpenSearchURL)
+	assert.Equal(t, 2*time.Second, c.SearchTimeout)
+	assert.Equal(t, uint32(5), c.SearchBreakerFailures)
+	assert.Equal(t, 30*time.Second, c.SearchBreakerOpen)
+}
+
+func TestLoadProjector_Defaults(t *testing.T) {
+	t.Setenv("JOB_DB_DSN", "postgres://x")
+	c, err := config.LoadProjector()
+	require.NoError(t, err)
+	assert.Equal(t, "postgres://x", c.DBDSN)
+	assert.Equal(t, []string{"redpanda:9092"}, c.KafkaBrokers)
+	assert.Equal(t, "http://opensearch:9200", c.OpenSearchURL)
+	assert.Equal(t, 8012, c.HTTPPort)
+	assert.Equal(t, 5*time.Second, c.AliasTTL)
+	assert.Equal(t, "info", c.LogLevel)
+}
+
+func TestLoadProjector_RequiresDSN(t *testing.T) {
+	_, err := config.LoadProjector()
+	require.Error(t, err)
+}

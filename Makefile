@@ -1,5 +1,5 @@
 .PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job cover-candidate \
-	ai-sync ai-lint ai-test ai-test-int ai-cover minio-image opensearch-image infra-up obs-up up down down-v migrate seed smoke logs
+	ai-sync ai-lint ai-test ai-test-int ai-cover minio-image opensearch-image infra-up obs-up up down down-v migrate seed smoke search-rebuild search-reconcile logs
 
 # Compose stack (deploy/docker), project name smarthire. Paths are absolute
 # and MSYS_NO_PATHCONV stops Git Bash on Windows from rewriting them.
@@ -145,6 +145,14 @@ migrate:
 
 seed:
 	$(COMPOSE) run --rm auth-seed
+
+# Job search read model (ADR 0009): zero-downtime rebuild from Postgres, and
+# a count/version comparison of open jobs (exit 2 on mismatch).
+search-rebuild:
+	$(COMPOSE) run --rm job-projector rebuild
+
+search-reconcile:
+	$(COMPOSE) run --rm job-projector reconcile
 
 smoke:
 	go run ./tools/cmd/smoke -base $(GATEWAY_URL) -origin $(SMOKE_ORIGIN) -kafka $(KAFKA_ADDR)

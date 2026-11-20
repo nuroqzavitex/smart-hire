@@ -193,3 +193,22 @@ func TestValidateDef_EducationAndExperience(t *testing.T) {
 	assert.Error(t, eventschema.ValidateDef("cv.parsed", "Experience", []byte(`{"company":"a","title":"b","start":"2020-13","end":null,"highlights":[]}`)))
 	assert.Error(t, eventschema.ValidateDef("cv.parsed", "Experience", []byte(`{"company":"a","title":"b","start":null,"highlights":[]}`)))
 }
+
+// Job events emitted before M2a have no published_at; the job read model
+// projector must still accept them (ADR 0009), while a bad value is rejected.
+func TestValidate_JobPublishedAtOptional(t *testing.T) {
+	legacy := map[string]any{}
+	for k, v := range jobPayload {
+		if k != "published_at" {
+			legacy[k] = v
+		}
+	}
+	for _, typ := range []string{"job.created", "job.updated"} {
+		assert.NoError(t, eventschema.Validate(typ, build(t, typ, legacy)), typ)
+		bad := map[string]any{"published_at": "yesterday"}
+		for k, v := range legacy {
+			bad[k] = v
+		}
+		assert.Error(t, eventschema.Validate(typ, build(t, typ, bad)), typ)
+	}
+}

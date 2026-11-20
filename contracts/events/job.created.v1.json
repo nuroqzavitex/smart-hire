@@ -16,7 +16,7 @@
     "payload": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["job_id", "recruiter_id", "title", "description", "location", "required_skills", "nice_to_have_skills", "level", "salary_min", "salary_max", "status", "version", "published_at"],
+      "required": ["job_id", "recruiter_id", "title", "description", "location", "required_skills", "nice_to_have_skills", "level", "salary_min", "salary_max", "status", "version"],
       "properties": {
         "job_id": { "type": "string", "format": "uuid" },
         "recruiter_id": { "type": "string", "format": "uuid" },

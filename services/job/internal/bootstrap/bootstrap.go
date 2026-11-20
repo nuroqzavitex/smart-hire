@@ -25,6 +25,7 @@ import (
 	"github.com/nuroqzavitex/smarthire/pkg/outbox"
 	jobgrpc "github.com/nuroqzavitex/smarthire/services/job/internal/adapter/grpc"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/httpx"
+	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/opensearch"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/postgres"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/app"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/config"
@@ -46,12 +47,14 @@ func ParseLevel(s string) slog.Level {
 	return l
 }
 
-// NewService assembles the use-case service over the postgres adapters.
-func NewService(pool *pgxpool.Pool, log *slog.Logger) *app.Service {
+// NewService assembles the use-case service over the postgres adapters and
+// the (guarded) search read model; search may be nil (Postgres only).
+func NewService(pool *pgxpool.Pool, search app.SearchBackend, log *slog.Logger) *app.Service {
 	return app.NewService(app.Deps{
 		Jobs:   postgres.NewJobRepo(pool),
 		Outbox: postgres.NewOutboxWriter(pool),
 		Tx:     postgres.NewTxManager(pool),
+		Search: search,
 		Now:    time.Now,
 		NewID:  uuid.New,
 		Logger: log,
@@ -88,7 +91,14 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 	defer producer.Close() // runs before pool.Close; the relay is awaited earlier
 
-	svc := NewService(pool, log)
+	// Building the client does not connect: OpenSearch being down only
+	// degrades ListJobs to the Postgres fallback (ADR 0009).
+	osClient, err := opensearch.New(cfg.OpenSearchURL)
+	if err != nil {
+		return err
+	}
+	search := opensearch.NewGuarded(osClient, cfg.SearchBreakerFailures, cfg.SearchBreakerOpen, cfg.SearchTimeout)
+	svc := NewService(pool, search, log)
 
 	httpSrv := &http.Server{
 		Handler:           httpx.NewHandler(pool.Ping),
