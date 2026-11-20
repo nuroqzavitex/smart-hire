@@ -77,7 +77,7 @@ func TestCreate_RecruiterOnly(t *testing.T) {
 	assert.JSONEq(t, `{"job_id":"`+j.ID.String()+`","recruiter_id":"`+r1.String()+`",
 		"title":"Senior Go Engineer","description":"Build and run backend services in Go.",
 		"required_skills":["Go"],"nice_to_have_skills":[],"level":"senior","location":"Hanoi",
-		"salary_min":null,"salary_max":null,"status":"draft","version":1}`, string(ev.Payload))
+		"salary_min":null,"salary_max":null,"status":"draft","version":1,"published_at":null}`, string(ev.Payload))
 }
 
 func TestCreate_InvalidDraftWritesNothing(t *testing.T) {

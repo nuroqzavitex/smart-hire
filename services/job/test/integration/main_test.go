@@ -25,8 +25,9 @@ import (
 )
 
 var (
-	pool *pgxpool.Pool
-	dsn  string
+	pool  *pgxpool.Pool
+	dsn   string
+	osURL string
 )
 
 const migrationsDir = "../../migrations"
@@ -106,6 +107,13 @@ func run(m *testing.M) int {
 		return 1
 	}
 	defer pool.Close()
+	url, stopOS, err := startOpenSearch(ctx)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "start opensearch:", err)
+		return 1
+	}
+	defer stopOS()
+	osURL = url
 	return m.Run()
 }
 

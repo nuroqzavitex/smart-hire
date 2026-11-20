@@ -101,10 +101,30 @@ services:
     depends_on: { minio: { condition: service_healthy } }
     restart: "no"
 
+  # Job read model (ADR 0009): official image + analysis-icu, single node,
+  # security plugin off (dev only, compose network + 127.0.0.1).
+  opensearch:
+    image: smarthire/opensearch:2.19.2-icu
+    build: { context: ./opensearch }
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports: ["127.0.0.1:9200:9200"]
+    volumes: [opensearch-data:/usr/share/opensearch/data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   redpanda-data:
   minio-data:
+  opensearch-data:
 
 networks:
   default:

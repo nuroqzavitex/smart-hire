@@ -1,5 +1,5 @@
 .PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job cover-candidate \
-	ai-sync ai-lint ai-test ai-test-int ai-cover minio-image infra-up obs-up up down down-v migrate seed smoke logs
+	ai-sync ai-lint ai-test ai-test-int ai-cover minio-image opensearch-image infra-up obs-up up down down-v migrate seed smoke logs
 
 # Compose stack (deploy/docker), project name smarthire. Paths are absolute
 # and MSYS_NO_PATHCONV stops Git Bash on Windows from rewriting them.
@@ -52,7 +52,7 @@ test:
 
 # Candidate integration tests run the locally built MinIO image (ADR 0008).
 # Loops over the Go workspace modules: services/ai is Python, not a Go module.
-test-int: minio-image
+test-int: minio-image opensearch-image
 	@for d in $$(go list -f '{{.Dir}}' -m); do \
 		echo "go test -tags integration $$d"; (cd $$d && go test -count=1 -tags integration ./...) || exit 1; \
 	done
@@ -95,8 +95,12 @@ ai-cover: minio-image
 minio-image:
 	$(COMPOSE) build minio
 
-infra-up: minio-image
-	$(COMPOSE) up -d --wait postgres redis redpanda redpanda-console minio
+# OpenSearch 2.19.2 + analysis-icu for the job read model (ADR 0009).
+opensearch-image:
+	$(COMPOSE) build opensearch
+
+infra-up: minio-image opensearch-image
+	$(COMPOSE) up -d --wait postgres redis redpanda redpanda-console minio opensearch
 	$(COMPOSE) run --rm topics-init && $(COMPOSE) run --rm minio-init
 
 obs-up:
