@@ -28,6 +28,7 @@ proto-deps:
 
 proto:
 	cd contracts/proto && buf generate
+	cd contracts/proto && buf generate --template buf.gen.python.yaml --path smarthire/ai
 	cd gen/go && go mod tidy
 	$(MAKE) openapi
 

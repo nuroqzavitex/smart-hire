@@ -1,0 +1,63 @@
+syntax = "proto3";
+package smarthire.ai.v1;
+
+// AIService is internal to the compose network (no JWT, ADR 0010): Job and
+// Candidate check ownership before calling it.
+service AIService {
+  rpc ScoreMatch(ScoreMatchRequest) returns (ScoreMatchResponse);
+  rpc FindCandidates(FindCandidatesRequest) returns (FindCandidatesResponse);
+  rpc RecommendJobs(RecommendJobsRequest) returns (RecommendJobsResponse);
+}
+
+message ScoreBreakdown {
+  double semantic_similarity = 1;
+  double required_skill_coverage = 2;
+  double experience_fit = 3;
+  double location_fit = 4;
+  repeated string matched_skills = 5;
+  repeated string missing_skills = 6;
+}
+
+message ScoreMatchRequest {
+  string cv_id = 1;
+  string job_id = 2;
+}
+
+message ScoreMatchResponse {
+  double score = 1;
+  ScoreBreakdown breakdown = 2;
+  string model_version = 3;
+}
+
+message FindCandidatesRequest {
+  string job_id = 1;
+  int32 top_k = 2;
+}
+
+message FindCandidatesResponse {
+  repeated RankedCandidate candidates = 1;
+  string model_version = 2;
+}
+
+message RankedCandidate {
+  string candidate_id = 1;
+  string cv_id = 2;
+  double score = 3;
+  ScoreBreakdown breakdown = 4;
+}
+
+message RecommendJobsRequest {
+  string cv_id = 1;
+  int32 top_k = 2;
+}
+
+message RecommendJobsResponse {
+  repeated RankedJob jobs = 1;
+  string model_version = 2;
+}
+
+message RankedJob {
+  string job_id = 1;
+  double score = 2;
+  ScoreBreakdown breakdown = 3;
+}

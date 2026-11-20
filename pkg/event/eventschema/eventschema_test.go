@@ -212,3 +212,41 @@ func TestValidate_JobPublishedAtOptional(t *testing.T) {
 		assert.Error(t, eventschema.Validate(typ, build(t, typ, bad)), typ)
 	}
 }
+
+func TestValidate_CvUpdated(t *testing.T) {
+	parsed := map[string]any{
+		"full_name": nil, "email": nil, "skills": []string{"go"}, "years_of_experience": 3.0,
+		"current_title": "Backend", "education": []any{}, "experiences": []any{}, "languages": []any{}, "location": nil,
+	}
+	ok := []map[string]any{
+		{"cv_id": testUUID, "candidate_id": testUUID, "version": 3, "status": "PARSED", "parsed": parsed, "parsed_at": "2026-11-20T10:00:00Z"},
+		{"cv_id": testUUID, "candidate_id": testUUID, "version": 4, "status": "UPLOADED", "parsed": nil, "parsed_at": nil},
+		{"cv_id": testUUID, "candidate_id": testUUID, "version": 2, "status": "FAILED", "parsed": nil, "parsed_at": nil},
+	}
+	for _, p := range ok {
+		assert.NoError(t, eventschema.Validate("cv.updated", buildFrom(t, "candidate-service", "cv.updated", p)))
+	}
+	bad := []map[string]any{
+		{"cv_id": testUUID, "candidate_id": testUUID, "version": 0, "status": "PARSED", "parsed": nil, "parsed_at": nil},
+		{"cv_id": testUUID, "candidate_id": testUUID, "version": 1, "status": "UPLOADING", "parsed": nil, "parsed_at": nil},
+		{"cv_id": testUUID, "candidate_id": testUUID, "version": 1, "status": "PARSED", "parsed": nil},
+	}
+	for _, p := range bad {
+		assert.Error(t, eventschema.Validate("cv.updated", buildFrom(t, "candidate-service", "cv.updated", p)))
+	}
+	assert.Error(t, eventschema.Validate("cv.updated", buildFrom(t, "ai-service", "cv.updated", ok[0])), "wrong source")
+}
+
+func TestValidate_MatchCompleted(t *testing.T) {
+	entry := map[string]any{"candidate_id": testUUID, "cv_id": testUUID, "score": 87.5}
+	p := map[string]any{"job_id": testUUID, "model_version": "fake-hash@768", "top": []any{entry}}
+	assert.NoError(t, eventschema.Validate("match.completed", buildFrom(t, "ai-service", "match.completed", p)))
+	top := make([]any, 21)
+	for i := range top {
+		top[i] = entry
+	}
+	assert.Error(t, eventschema.Validate("match.completed", buildFrom(t, "ai-service", "match.completed",
+		map[string]any{"job_id": testUUID, "model_version": "m", "top": top})), "more than 20")
+	assert.Error(t, eventschema.Validate("match.completed", buildFrom(t, "ai-service", "match.completed",
+		map[string]any{"job_id": testUUID, "model_version": "m", "top": []any{map[string]any{"candidate_id": testUUID, "cv_id": testUUID, "score": 101}}})), "score > 100")
+}

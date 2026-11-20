@@ -14,6 +14,8 @@ service CandidateService {
   rpc ListMyCVs(ListMyCVsRequest) returns (ListMyCVsResponse) { option (google.api.http) = { get: "/v1/cvs" }; }
   rpc UpdateParsedData(UpdateParsedDataRequest) returns (CV) { option (google.api.http) = { patch: "/v1/cvs/{id}/parsed" body: "parsed" }; }
   rpc ReparseCV(ReparseCVRequest) returns (CV) { option (google.api.http) = { post: "/v1/cvs/{id}:reparse" body: "*" }; }
+  // Open jobs ranked for one of the caller's parsed CVs by the AI service.
+  rpc ListRecommendedJobs(ListRecommendedJobsRequest) returns (ListRecommendedJobsResponse) { option (google.api.http) = { get: "/v1/cvs/{id}/recommended-jobs" }; }
 }
 
 enum CVStatus {
@@ -120,4 +122,35 @@ message UpdateParsedDataRequest {
 
 message ReparseCVRequest {
   string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+// MatchBreakdown explains a match score (copy of smarthire.ai.v1.ScoreBreakdown).
+message MatchBreakdown {
+  double semantic_similarity = 1;
+  double required_skill_coverage = 2;
+  double experience_fit = 3;
+  double location_fit = 4;
+  repeated string matched_skills = 5;
+  repeated string missing_skills = 6;
+}
+
+message ListRecommendedJobsRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  int32 top_k = 2 [(buf.validate.field).int32 = {gte: 0, lte: 50}]; // 0 = default 20
+}
+
+message RecommendedJob {
+  string job_id = 1;
+  string title = 2;
+  string level = 3; // intern|junior|middle|senior|lead
+  string location = 4;
+  optional int32 salary_min = 5;
+  optional int32 salary_max = 6;
+  double score = 7;
+  MatchBreakdown breakdown = 8;
+}
+
+message ListRecommendedJobsResponse {
+  repeated RecommendedJob jobs = 1;
+  string model_version = 2;
 }

@@ -19,14 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CandidateService_GetMyProfile_FullMethodName     = "/smarthire.candidate.v1.CandidateService/GetMyProfile"
-	CandidateService_UpsertMyProfile_FullMethodName  = "/smarthire.candidate.v1.CandidateService/UpsertMyProfile"
-	CandidateService_CreateUploadURL_FullMethodName  = "/smarthire.candidate.v1.CandidateService/CreateUploadURL"
-	CandidateService_CompleteUpload_FullMethodName   = "/smarthire.candidate.v1.CandidateService/CompleteUpload"
-	CandidateService_GetCV_FullMethodName            = "/smarthire.candidate.v1.CandidateService/GetCV"
-	CandidateService_ListMyCVs_FullMethodName        = "/smarthire.candidate.v1.CandidateService/ListMyCVs"
-	CandidateService_UpdateParsedData_FullMethodName = "/smarthire.candidate.v1.CandidateService/UpdateParsedData"
-	CandidateService_ReparseCV_FullMethodName        = "/smarthire.candidate.v1.CandidateService/ReparseCV"
+	CandidateService_GetMyProfile_FullMethodName        = "/smarthire.candidate.v1.CandidateService/GetMyProfile"
+	CandidateService_UpsertMyProfile_FullMethodName     = "/smarthire.candidate.v1.CandidateService/UpsertMyProfile"
+	CandidateService_CreateUploadURL_FullMethodName     = "/smarthire.candidate.v1.CandidateService/CreateUploadURL"
+	CandidateService_CompleteUpload_FullMethodName      = "/smarthire.candidate.v1.CandidateService/CompleteUpload"
+	CandidateService_GetCV_FullMethodName               = "/smarthire.candidate.v1.CandidateService/GetCV"
+	CandidateService_ListMyCVs_FullMethodName           = "/smarthire.candidate.v1.CandidateService/ListMyCVs"
+	CandidateService_UpdateParsedData_FullMethodName    = "/smarthire.candidate.v1.CandidateService/UpdateParsedData"
+	CandidateService_ReparseCV_FullMethodName           = "/smarthire.candidate.v1.CandidateService/ReparseCV"
+	CandidateService_ListRecommendedJobs_FullMethodName = "/smarthire.candidate.v1.CandidateService/ListRecommendedJobs"
 )
 
 // CandidateServiceClient is the client API for CandidateService service.
@@ -41,6 +42,8 @@ type CandidateServiceClient interface {
 	ListMyCVs(ctx context.Context, in *ListMyCVsRequest, opts ...grpc.CallOption) (*ListMyCVsResponse, error)
 	UpdateParsedData(ctx context.Context, in *UpdateParsedDataRequest, opts ...grpc.CallOption) (*CV, error)
 	ReparseCV(ctx context.Context, in *ReparseCVRequest, opts ...grpc.CallOption) (*CV, error)
+	// Open jobs ranked for one of the caller's parsed CVs by the AI service.
+	ListRecommendedJobs(ctx context.Context, in *ListRecommendedJobsRequest, opts ...grpc.CallOption) (*ListRecommendedJobsResponse, error)
 }
 
 type candidateServiceClient struct {
@@ -131,6 +134,16 @@ func (c *candidateServiceClient) ReparseCV(ctx context.Context, in *ReparseCVReq
 	return out, nil
 }
 
+func (c *candidateServiceClient) ListRecommendedJobs(ctx context.Context, in *ListRecommendedJobsRequest, opts ...grpc.CallOption) (*ListRecommendedJobsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRecommendedJobsResponse)
+	err := c.cc.Invoke(ctx, CandidateService_ListRecommendedJobs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CandidateServiceServer is the server API for CandidateService service.
 // All implementations must embed UnimplementedCandidateServiceServer
 // for forward compatibility.
@@ -143,6 +156,8 @@ type CandidateServiceServer interface {
 	ListMyCVs(context.Context, *ListMyCVsRequest) (*ListMyCVsResponse, error)
 	UpdateParsedData(context.Context, *UpdateParsedDataRequest) (*CV, error)
 	ReparseCV(context.Context, *ReparseCVRequest) (*CV, error)
+	// Open jobs ranked for one of the caller's parsed CVs by the AI service.
+	ListRecommendedJobs(context.Context, *ListRecommendedJobsRequest) (*ListRecommendedJobsResponse, error)
 	mustEmbedUnimplementedCandidateServiceServer()
 }
 
@@ -176,6 +191,9 @@ func (UnimplementedCandidateServiceServer) UpdateParsedData(context.Context, *Up
 }
 func (UnimplementedCandidateServiceServer) ReparseCV(context.Context, *ReparseCVRequest) (*CV, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReparseCV not implemented")
+}
+func (UnimplementedCandidateServiceServer) ListRecommendedJobs(context.Context, *ListRecommendedJobsRequest) (*ListRecommendedJobsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListRecommendedJobs not implemented")
 }
 func (UnimplementedCandidateServiceServer) mustEmbedUnimplementedCandidateServiceServer() {}
 func (UnimplementedCandidateServiceServer) testEmbeddedByValue()                          {}
@@ -342,6 +360,24 @@ func _CandidateService_ReparseCV_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CandidateService_ListRecommendedJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRecommendedJobsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CandidateServiceServer).ListRecommendedJobs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CandidateService_ListRecommendedJobs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CandidateServiceServer).ListRecommendedJobs(ctx, req.(*ListRecommendedJobsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CandidateService_ServiceDesc is the grpc.ServiceDesc for CandidateService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -380,6 +416,10 @@ var CandidateService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReparseCV",
 			Handler:    _CandidateService_ReparseCV_Handler,
+		},
+		{
+			MethodName: "ListRecommendedJobs",
+			Handler:    _CandidateService_ListRecommendedJobs_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

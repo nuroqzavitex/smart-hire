@@ -94,6 +94,54 @@ definitions:
       message:
         type: string
     type: object
+  smarthireCandidateV1MatchBreakdown:
+    description: MatchBreakdown explains a match score (copy of smarthire.ai.v1.ScoreBreakdown).
+    properties:
+      experience_fit:
+        format: double
+        type: number
+      location_fit:
+        format: double
+        type: number
+      matched_skills:
+        items:
+          type: string
+        type: array
+      missing_skills:
+        items:
+          type: string
+        type: array
+      required_skill_coverage:
+        format: double
+        type: number
+      semantic_similarity:
+        format: double
+        type: number
+    type: object
+  smarthireJobV1MatchBreakdown:
+    description: MatchBreakdown explains a match score (copy of smarthire.ai.v1.ScoreBreakdown).
+    properties:
+      experience_fit:
+        format: double
+        type: number
+      location_fit:
+        format: double
+        type: number
+      matched_skills:
+        items:
+          type: string
+        type: array
+      missing_skills:
+        items:
+          type: string
+        type: array
+      required_skill_coverage:
+        format: double
+        type: number
+      semantic_similarity:
+        format: double
+        type: number
+    type: object
   v1CV:
     description: CV never exposes the storage object key or a download URL.
     properties:
@@ -312,6 +360,16 @@ definitions:
       next_page_token:
         type: string
     type: object
+  v1ListMatchedCandidatesResponse:
+    properties:
+      candidates:
+        items:
+          $ref: '#/definitions/v1MatchedCandidate'
+          type: object
+        type: array
+      model_version:
+        type: string
+    type: object
   v1ListMyCVsResponse:
     properties:
       cvs:
@@ -321,6 +379,28 @@ definitions:
         type: array
       next_page_token:
         type: string
+    type: object
+  v1ListRecommendedJobsResponse:
+    properties:
+      jobs:
+        items:
+          $ref: '#/definitions/v1RecommendedJob'
+          type: object
+        type: array
+      model_version:
+        type: string
+    type: object
+  v1MatchedCandidate:
+    properties:
+      breakdown:
+        $ref: '#/definitions/smarthireJobV1MatchBreakdown'
+      candidate_id:
+        type: string
+      cv_id:
+        type: string
+      score:
+        format: double
+        type: number
     type: object
   v1ParsedCV:
     properties:
@@ -369,6 +449,29 @@ definitions:
         format: date-time
         type: string
       user_id:
+        type: string
+    type: object
+  v1RecommendedJob:
+    properties:
+      breakdown:
+        $ref: '#/definitions/smarthireCandidateV1MatchBreakdown'
+      job_id:
+        type: string
+      level:
+        title: intern|junior|middle|senior|lead
+        type: string
+      location:
+        type: string
+      salary_max:
+        format: int32
+        type: integer
+      salary_min:
+        format: int32
+        type: integer
+      score:
+        format: double
+        type: number
+      title:
         type: string
     type: object
   v1RegisterRequest:
@@ -611,6 +714,32 @@ paths:
             $ref: '#/definitions/rpcStatus'
       tags:
       - CandidateService
+  /v1/cvs/{id}/recommended-jobs:
+    get:
+      operationId: CandidateService_ListRecommendedJobs
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      - description: 0 = default 20
+        format: int32
+        in: query
+        name: top_k
+        required: false
+        type: integer
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1ListRecommendedJobsResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      summary: Open jobs ranked for one of the caller's parsed CVs by the AI service.
+      tags:
+      - CandidateService
   /v1/cvs/{id}:complete:
     post:
       operationId: CandidateService_CompleteUpload
@@ -817,6 +946,33 @@ paths:
             $ref: '#/definitions/rpcStatus'
       tags:
       - JobService
+  /v1/jobs/{id}/candidates:
+    get:
+      operationId: JobService_ListMatchedCandidates
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      - description: 0 = default 20
+        format: int32
+        in: query
+        name: top_k
+        required: false
+        type: integer
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1ListMatchedCandidatesResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      summary: Candidates ranked for a job by the AI service; only the owning recruiter
+        (or an admin).
+      tags:
+      - JobService
   /v1/jobs/{id}:close:
     post:
       operationId: JobService_CloseJob
@@ -951,6 +1107,10 @@ produces:
 - application/json
 swagger: "2.0"
 tags:
+- description: |-
+    AIService is internal to the compose network (no JWT, ADR 0010): Job and
+    Candidate check ownership before calling it.
+  name: AIService
 - name: AuthService
 - name: CandidateService
 - name: JobService

@@ -1,10 +1,14 @@
 {
   "swagger": "2.0",
   "info": {
-    "title": "smarthire/auth/v1/auth.proto",
+    "title": "smarthire/ai/v1/ai.proto",
     "version": "version not set"
   },
   "tags": [
+    {
+      "name": "AIService",
+      "description": "AIService is internal to the compose network (no JWT, ADR 0010): Job and\nCandidate check ownership before calling it."
+    },
     {
       "name": "AuthService"
     },
@@ -185,6 +189,45 @@
             "schema": {
               "$ref": "#/definitions/v1ParsedCV"
             }
+          }
+        ],
+        "tags": [
+          "CandidateService"
+        ]
+      }
+    },
+    "/v1/cvs/{id}/recommended-jobs": {
+      "get": {
+        "summary": "Open jobs ranked for one of the caller's parsed CVs by the AI service.",
+        "operationId": "CandidateService_ListRecommendedJobs",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListRecommendedJobsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "top_k",
+            "description": "0 = default 20",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
           }
         ],
         "tags": [
@@ -476,6 +519,45 @@
         ]
       }
     },
+    "/v1/jobs/{id}/candidates": {
+      "get": {
+        "summary": "Candidates ranked for a job by the AI service; only the owning recruiter (or an admin).",
+        "operationId": "JobService_ListMatchedCandidates",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListMatchedCandidatesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "top_k",
+            "description": "0 = default 20",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          }
+        ],
+        "tags": [
+          "JobService"
+        ]
+      }
+    },
     "/v1/jobs/{id}:close": {
       "post": {
         "operationId": "JobService_CloseJob",
@@ -749,6 +831,74 @@
           }
         }
       }
+    },
+    "smarthireCandidateV1MatchBreakdown": {
+      "type": "object",
+      "properties": {
+        "semantic_similarity": {
+          "type": "number",
+          "format": "double"
+        },
+        "required_skill_coverage": {
+          "type": "number",
+          "format": "double"
+        },
+        "experience_fit": {
+          "type": "number",
+          "format": "double"
+        },
+        "location_fit": {
+          "type": "number",
+          "format": "double"
+        },
+        "matched_skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "MatchBreakdown explains a match score (copy of smarthire.ai.v1.ScoreBreakdown)."
+    },
+    "smarthireJobV1MatchBreakdown": {
+      "type": "object",
+      "properties": {
+        "semantic_similarity": {
+          "type": "number",
+          "format": "double"
+        },
+        "required_skill_coverage": {
+          "type": "number",
+          "format": "double"
+        },
+        "experience_fit": {
+          "type": "number",
+          "format": "double"
+        },
+        "location_fit": {
+          "type": "number",
+          "format": "double"
+        },
+        "matched_skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "MatchBreakdown explains a match score (copy of smarthire.ai.v1.ScoreBreakdown)."
     },
     "v1CV": {
       "type": "object",
@@ -1052,6 +1202,21 @@
         }
       }
     },
+    "v1ListMatchedCandidatesResponse": {
+      "type": "object",
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1MatchedCandidate"
+          }
+        },
+        "model_version": {
+          "type": "string"
+        }
+      }
+    },
     "v1ListMyCVsResponse": {
       "type": "object",
       "properties": {
@@ -1064,6 +1229,39 @@
         },
         "next_page_token": {
           "type": "string"
+        }
+      }
+    },
+    "v1ListRecommendedJobsResponse": {
+      "type": "object",
+      "properties": {
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1RecommendedJob"
+          }
+        },
+        "model_version": {
+          "type": "string"
+        }
+      }
+    },
+    "v1MatchedCandidate": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string"
+        },
+        "cv_id": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number",
+          "format": "double"
+        },
+        "breakdown": {
+          "$ref": "#/definitions/smarthireJobV1MatchBreakdown"
         }
       }
     },
@@ -1136,6 +1334,39 @@
         "updated_at": {
           "type": "string",
           "format": "date-time"
+        }
+      }
+    },
+    "v1RecommendedJob": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "level": {
+          "type": "string",
+          "title": "intern|junior|middle|senior|lead"
+        },
+        "location": {
+          "type": "string"
+        },
+        "salary_min": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "salary_max": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "score": {
+          "type": "number",
+          "format": "double"
+        },
+        "breakdown": {
+          "$ref": "#/definitions/smarthireCandidateV1MatchBreakdown"
         }
       }
     },

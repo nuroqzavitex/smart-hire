@@ -1030,6 +1030,295 @@ func (x *ReparseCVRequest) GetId() string {
 	return ""
 }
 
+// MatchBreakdown explains a match score (copy of smarthire.ai.v1.ScoreBreakdown).
+type MatchBreakdown struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	SemanticSimilarity    float64                `protobuf:"fixed64,1,opt,name=semantic_similarity,json=semanticSimilarity,proto3" json:"semantic_similarity,omitempty"`
+	RequiredSkillCoverage float64                `protobuf:"fixed64,2,opt,name=required_skill_coverage,json=requiredSkillCoverage,proto3" json:"required_skill_coverage,omitempty"`
+	ExperienceFit         float64                `protobuf:"fixed64,3,opt,name=experience_fit,json=experienceFit,proto3" json:"experience_fit,omitempty"`
+	LocationFit           float64                `protobuf:"fixed64,4,opt,name=location_fit,json=locationFit,proto3" json:"location_fit,omitempty"`
+	MatchedSkills         []string               `protobuf:"bytes,5,rep,name=matched_skills,json=matchedSkills,proto3" json:"matched_skills,omitempty"`
+	MissingSkills         []string               `protobuf:"bytes,6,rep,name=missing_skills,json=missingSkills,proto3" json:"missing_skills,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *MatchBreakdown) Reset() {
+	*x = MatchBreakdown{}
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MatchBreakdown) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MatchBreakdown) ProtoMessage() {}
+
+func (x *MatchBreakdown) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MatchBreakdown.ProtoReflect.Descriptor instead.
+func (*MatchBreakdown) Descriptor() ([]byte, []int) {
+	return file_smarthire_candidate_v1_candidate_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *MatchBreakdown) GetSemanticSimilarity() float64 {
+	if x != nil {
+		return x.SemanticSimilarity
+	}
+	return 0
+}
+
+func (x *MatchBreakdown) GetRequiredSkillCoverage() float64 {
+	if x != nil {
+		return x.RequiredSkillCoverage
+	}
+	return 0
+}
+
+func (x *MatchBreakdown) GetExperienceFit() float64 {
+	if x != nil {
+		return x.ExperienceFit
+	}
+	return 0
+}
+
+func (x *MatchBreakdown) GetLocationFit() float64 {
+	if x != nil {
+		return x.LocationFit
+	}
+	return 0
+}
+
+func (x *MatchBreakdown) GetMatchedSkills() []string {
+	if x != nil {
+		return x.MatchedSkills
+	}
+	return nil
+}
+
+func (x *MatchBreakdown) GetMissingSkills() []string {
+	if x != nil {
+		return x.MissingSkills
+	}
+	return nil
+}
+
+type ListRecommendedJobsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	TopK          int32                  `protobuf:"varint,2,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"` // 0 = default 20
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRecommendedJobsRequest) Reset() {
+	*x = ListRecommendedJobsRequest{}
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRecommendedJobsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRecommendedJobsRequest) ProtoMessage() {}
+
+func (x *ListRecommendedJobsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRecommendedJobsRequest.ProtoReflect.Descriptor instead.
+func (*ListRecommendedJobsRequest) Descriptor() ([]byte, []int) {
+	return file_smarthire_candidate_v1_candidate_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListRecommendedJobsRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ListRecommendedJobsRequest) GetTopK() int32 {
+	if x != nil {
+		return x.TopK
+	}
+	return 0
+}
+
+type RecommendedJob struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Level         string                 `protobuf:"bytes,3,opt,name=level,proto3" json:"level,omitempty"` // intern|junior|middle|senior|lead
+	Location      string                 `protobuf:"bytes,4,opt,name=location,proto3" json:"location,omitempty"`
+	SalaryMin     *int32                 `protobuf:"varint,5,opt,name=salary_min,json=salaryMin,proto3,oneof" json:"salary_min,omitempty"`
+	SalaryMax     *int32                 `protobuf:"varint,6,opt,name=salary_max,json=salaryMax,proto3,oneof" json:"salary_max,omitempty"`
+	Score         float64                `protobuf:"fixed64,7,opt,name=score,proto3" json:"score,omitempty"`
+	Breakdown     *MatchBreakdown        `protobuf:"bytes,8,opt,name=breakdown,proto3" json:"breakdown,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecommendedJob) Reset() {
+	*x = RecommendedJob{}
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecommendedJob) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecommendedJob) ProtoMessage() {}
+
+func (x *RecommendedJob) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecommendedJob.ProtoReflect.Descriptor instead.
+func (*RecommendedJob) Descriptor() ([]byte, []int) {
+	return file_smarthire_candidate_v1_candidate_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *RecommendedJob) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *RecommendedJob) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *RecommendedJob) GetLevel() string {
+	if x != nil {
+		return x.Level
+	}
+	return ""
+}
+
+func (x *RecommendedJob) GetLocation() string {
+	if x != nil {
+		return x.Location
+	}
+	return ""
+}
+
+func (x *RecommendedJob) GetSalaryMin() int32 {
+	if x != nil && x.SalaryMin != nil {
+		return *x.SalaryMin
+	}
+	return 0
+}
+
+func (x *RecommendedJob) GetSalaryMax() int32 {
+	if x != nil && x.SalaryMax != nil {
+		return *x.SalaryMax
+	}
+	return 0
+}
+
+func (x *RecommendedJob) GetScore() float64 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
+}
+
+func (x *RecommendedJob) GetBreakdown() *MatchBreakdown {
+	if x != nil {
+		return x.Breakdown
+	}
+	return nil
+}
+
+type ListRecommendedJobsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Jobs          []*RecommendedJob      `protobuf:"bytes,1,rep,name=jobs,proto3" json:"jobs,omitempty"`
+	ModelVersion  string                 `protobuf:"bytes,2,opt,name=model_version,json=modelVersion,proto3" json:"model_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRecommendedJobsResponse) Reset() {
+	*x = ListRecommendedJobsResponse{}
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRecommendedJobsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRecommendedJobsResponse) ProtoMessage() {}
+
+func (x *ListRecommendedJobsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRecommendedJobsResponse.ProtoReflect.Descriptor instead.
+func (*ListRecommendedJobsResponse) Descriptor() ([]byte, []int) {
+	return file_smarthire_candidate_v1_candidate_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ListRecommendedJobsResponse) GetJobs() []*RecommendedJob {
+	if x != nil {
+		return x.Jobs
+	}
+	return nil
+}
+
+func (x *ListRecommendedJobsResponse) GetModelVersion() string {
+	if x != nil {
+		return x.ModelVersion
+	}
+	return ""
+}
+
 var File_smarthire_candidate_v1_candidate_proto protoreflect.FileDescriptor
 
 const file_smarthire_candidate_v1_candidate_proto_rawDesc = "" +
@@ -1131,13 +1420,39 @@ const file_smarthire_candidate_v1_candidate_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\x12@\n" +
 	"\x06parsed\x18\x02 \x01(\v2 .smarthire.candidate.v1.ParsedCVB\x06\xbaH\x03\xc8\x01\x01R\x06parsed\",\n" +
 	"\x10ReparseCVRequest\x12\x18\n" +
-	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id*\x82\x01\n" +
+	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\"\x91\x02\n" +
+	"\x0eMatchBreakdown\x12/\n" +
+	"\x13semantic_similarity\x18\x01 \x01(\x01R\x12semanticSimilarity\x126\n" +
+	"\x17required_skill_coverage\x18\x02 \x01(\x01R\x15requiredSkillCoverage\x12%\n" +
+	"\x0eexperience_fit\x18\x03 \x01(\x01R\rexperienceFit\x12!\n" +
+	"\flocation_fit\x18\x04 \x01(\x01R\vlocationFit\x12%\n" +
+	"\x0ematched_skills\x18\x05 \x03(\tR\rmatchedSkills\x12%\n" +
+	"\x0emissing_skills\x18\x06 \x03(\tR\rmissingSkills\"V\n" +
+	"\x1aListRecommendedJobsRequest\x12\x18\n" +
+	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\x12\x1e\n" +
+	"\x05top_k\x18\x02 \x01(\x05B\t\xbaH\x06\x1a\x04\x182(\x00R\x04topK\"\xb1\x02\n" +
+	"\x0eRecommendedJob\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x14\n" +
+	"\x05level\x18\x03 \x01(\tR\x05level\x12\x1a\n" +
+	"\blocation\x18\x04 \x01(\tR\blocation\x12\"\n" +
+	"\n" +
+	"salary_min\x18\x05 \x01(\x05H\x00R\tsalaryMin\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"salary_max\x18\x06 \x01(\x05H\x01R\tsalaryMax\x88\x01\x01\x12\x14\n" +
+	"\x05score\x18\a \x01(\x01R\x05score\x12D\n" +
+	"\tbreakdown\x18\b \x01(\v2&.smarthire.candidate.v1.MatchBreakdownR\tbreakdownB\r\n" +
+	"\v_salary_minB\r\n" +
+	"\v_salary_max\"~\n" +
+	"\x1bListRecommendedJobsResponse\x12:\n" +
+	"\x04jobs\x18\x01 \x03(\v2&.smarthire.candidate.v1.RecommendedJobR\x04jobs\x12#\n" +
+	"\rmodel_version\x18\x02 \x01(\tR\fmodelVersion*\x82\x01\n" +
 	"\bCVStatus\x12\x19\n" +
 	"\x15CV_STATUS_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13CV_STATUS_UPLOADING\x10\x01\x12\x16\n" +
 	"\x12CV_STATUS_UPLOADED\x10\x02\x12\x14\n" +
 	"\x10CV_STATUS_PARSED\x10\x03\x12\x14\n" +
-	"\x10CV_STATUS_FAILED\x10\x042\xe9\a\n" +
+	"\x10CV_STATUS_FAILED\x10\x042\x91\t\n" +
 	"\x10CandidateService\x12t\n" +
 	"\fGetMyProfile\x12+.smarthire.candidate.v1.GetMyProfileRequest\x1a\x1f.smarthire.candidate.v1.Profile\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/me/profile\x12}\n" +
 	"\x0fUpsertMyProfile\x12..smarthire.candidate.v1.UpsertMyProfileRequest\x1a\x1f.smarthire.candidate.v1.Profile\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\x1a\x0e/v1/me/profile\x12\x91\x01\n" +
@@ -1146,7 +1461,8 @@ const file_smarthire_candidate_v1_candidate_proto_rawDesc = "" +
 	"\x05GetCV\x12$.smarthire.candidate.v1.GetCVRequest\x1a\x1a.smarthire.candidate.v1.CV\"\x14\x82\xd3\xe4\x93\x02\x0e\x12\f/v1/cvs/{id}\x12q\n" +
 	"\tListMyCVs\x12(.smarthire.candidate.v1.ListMyCVsRequest\x1a).smarthire.candidate.v1.ListMyCVsResponse\"\x0f\x82\xd3\xe4\x93\x02\t\x12\a/v1/cvs\x12\x84\x01\n" +
 	"\x10UpdateParsedData\x12/.smarthire.candidate.v1.UpdateParsedDataRequest\x1a\x1a.smarthire.candidate.v1.CV\"#\x82\xd3\xe4\x93\x02\x1d:\x06parsed2\x13/v1/cvs/{id}/parsed\x12r\n" +
-	"\tReparseCV\x12(.smarthire.candidate.v1.ReparseCVRequest\x1a\x1a.smarthire.candidate.v1.CV\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/cvs/{id}:reparseB\xf3\x01\n" +
+	"\tReparseCV\x12(.smarthire.candidate.v1.ReparseCVRequest\x1a\x1a.smarthire.candidate.v1.CV\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/cvs/{id}:reparse\x12\xa5\x01\n" +
+	"\x13ListRecommendedJobs\x122.smarthire.candidate.v1.ListRecommendedJobsRequest\x1a3.smarthire.candidate.v1.ListRecommendedJobsResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/cvs/{id}/recommended-jobsB\xf3\x01\n" +
 	"\x1acom.smarthire.candidate.v1B\x0eCandidateProtoP\x01ZKgithub.com/nuroqzavitex/smarthire/gen/go/smarthire/candidate/v1;candidatev1\xa2\x02\x03SCX\xaa\x02\x16Smarthire.Candidate.V1\xca\x02\x16Smarthire\\Candidate\\V1\xe2\x02\"Smarthire\\Candidate\\V1\\GPBMetadata\xea\x02\x18Smarthire::Candidate::V1b\x06proto3"
 
 var (
@@ -1162,60 +1478,68 @@ func file_smarthire_candidate_v1_candidate_proto_rawDescGZIP() []byte {
 }
 
 var file_smarthire_candidate_v1_candidate_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_smarthire_candidate_v1_candidate_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_smarthire_candidate_v1_candidate_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_smarthire_candidate_v1_candidate_proto_goTypes = []any{
-	(CVStatus)(0),                   // 0: smarthire.candidate.v1.CVStatus
-	(*Profile)(nil),                 // 1: smarthire.candidate.v1.Profile
-	(*GetMyProfileRequest)(nil),     // 2: smarthire.candidate.v1.GetMyProfileRequest
-	(*UpsertMyProfileRequest)(nil),  // 3: smarthire.candidate.v1.UpsertMyProfileRequest
-	(*Education)(nil),               // 4: smarthire.candidate.v1.Education
-	(*Experience)(nil),              // 5: smarthire.candidate.v1.Experience
-	(*ParsedCV)(nil),                // 6: smarthire.candidate.v1.ParsedCV
-	(*CV)(nil),                      // 7: smarthire.candidate.v1.CV
-	(*CreateUploadURLRequest)(nil),  // 8: smarthire.candidate.v1.CreateUploadURLRequest
-	(*CreateUploadURLResponse)(nil), // 9: smarthire.candidate.v1.CreateUploadURLResponse
-	(*CompleteUploadRequest)(nil),   // 10: smarthire.candidate.v1.CompleteUploadRequest
-	(*GetCVRequest)(nil),            // 11: smarthire.candidate.v1.GetCVRequest
-	(*ListMyCVsRequest)(nil),        // 12: smarthire.candidate.v1.ListMyCVsRequest
-	(*ListMyCVsResponse)(nil),       // 13: smarthire.candidate.v1.ListMyCVsResponse
-	(*UpdateParsedDataRequest)(nil), // 14: smarthire.candidate.v1.UpdateParsedDataRequest
-	(*ReparseCVRequest)(nil),        // 15: smarthire.candidate.v1.ReparseCVRequest
-	(*timestamppb.Timestamp)(nil),   // 16: google.protobuf.Timestamp
+	(CVStatus)(0),                       // 0: smarthire.candidate.v1.CVStatus
+	(*Profile)(nil),                     // 1: smarthire.candidate.v1.Profile
+	(*GetMyProfileRequest)(nil),         // 2: smarthire.candidate.v1.GetMyProfileRequest
+	(*UpsertMyProfileRequest)(nil),      // 3: smarthire.candidate.v1.UpsertMyProfileRequest
+	(*Education)(nil),                   // 4: smarthire.candidate.v1.Education
+	(*Experience)(nil),                  // 5: smarthire.candidate.v1.Experience
+	(*ParsedCV)(nil),                    // 6: smarthire.candidate.v1.ParsedCV
+	(*CV)(nil),                          // 7: smarthire.candidate.v1.CV
+	(*CreateUploadURLRequest)(nil),      // 8: smarthire.candidate.v1.CreateUploadURLRequest
+	(*CreateUploadURLResponse)(nil),     // 9: smarthire.candidate.v1.CreateUploadURLResponse
+	(*CompleteUploadRequest)(nil),       // 10: smarthire.candidate.v1.CompleteUploadRequest
+	(*GetCVRequest)(nil),                // 11: smarthire.candidate.v1.GetCVRequest
+	(*ListMyCVsRequest)(nil),            // 12: smarthire.candidate.v1.ListMyCVsRequest
+	(*ListMyCVsResponse)(nil),           // 13: smarthire.candidate.v1.ListMyCVsResponse
+	(*UpdateParsedDataRequest)(nil),     // 14: smarthire.candidate.v1.UpdateParsedDataRequest
+	(*ReparseCVRequest)(nil),            // 15: smarthire.candidate.v1.ReparseCVRequest
+	(*MatchBreakdown)(nil),              // 16: smarthire.candidate.v1.MatchBreakdown
+	(*ListRecommendedJobsRequest)(nil),  // 17: smarthire.candidate.v1.ListRecommendedJobsRequest
+	(*RecommendedJob)(nil),              // 18: smarthire.candidate.v1.RecommendedJob
+	(*ListRecommendedJobsResponse)(nil), // 19: smarthire.candidate.v1.ListRecommendedJobsResponse
+	(*timestamppb.Timestamp)(nil),       // 20: google.protobuf.Timestamp
 }
 var file_smarthire_candidate_v1_candidate_proto_depIdxs = []int32{
-	16, // 0: smarthire.candidate.v1.Profile.created_at:type_name -> google.protobuf.Timestamp
-	16, // 1: smarthire.candidate.v1.Profile.updated_at:type_name -> google.protobuf.Timestamp
+	20, // 0: smarthire.candidate.v1.Profile.created_at:type_name -> google.protobuf.Timestamp
+	20, // 1: smarthire.candidate.v1.Profile.updated_at:type_name -> google.protobuf.Timestamp
 	4,  // 2: smarthire.candidate.v1.ParsedCV.education:type_name -> smarthire.candidate.v1.Education
 	5,  // 3: smarthire.candidate.v1.ParsedCV.experiences:type_name -> smarthire.candidate.v1.Experience
 	0,  // 4: smarthire.candidate.v1.CV.status:type_name -> smarthire.candidate.v1.CVStatus
 	6,  // 5: smarthire.candidate.v1.CV.parsed:type_name -> smarthire.candidate.v1.ParsedCV
-	16, // 6: smarthire.candidate.v1.CV.created_at:type_name -> google.protobuf.Timestamp
-	16, // 7: smarthire.candidate.v1.CV.updated_at:type_name -> google.protobuf.Timestamp
-	16, // 8: smarthire.candidate.v1.CV.parsed_at:type_name -> google.protobuf.Timestamp
-	16, // 9: smarthire.candidate.v1.CreateUploadURLResponse.expires_at:type_name -> google.protobuf.Timestamp
+	20, // 6: smarthire.candidate.v1.CV.created_at:type_name -> google.protobuf.Timestamp
+	20, // 7: smarthire.candidate.v1.CV.updated_at:type_name -> google.protobuf.Timestamp
+	20, // 8: smarthire.candidate.v1.CV.parsed_at:type_name -> google.protobuf.Timestamp
+	20, // 9: smarthire.candidate.v1.CreateUploadURLResponse.expires_at:type_name -> google.protobuf.Timestamp
 	7,  // 10: smarthire.candidate.v1.ListMyCVsResponse.cvs:type_name -> smarthire.candidate.v1.CV
 	6,  // 11: smarthire.candidate.v1.UpdateParsedDataRequest.parsed:type_name -> smarthire.candidate.v1.ParsedCV
-	2,  // 12: smarthire.candidate.v1.CandidateService.GetMyProfile:input_type -> smarthire.candidate.v1.GetMyProfileRequest
-	3,  // 13: smarthire.candidate.v1.CandidateService.UpsertMyProfile:input_type -> smarthire.candidate.v1.UpsertMyProfileRequest
-	8,  // 14: smarthire.candidate.v1.CandidateService.CreateUploadURL:input_type -> smarthire.candidate.v1.CreateUploadURLRequest
-	10, // 15: smarthire.candidate.v1.CandidateService.CompleteUpload:input_type -> smarthire.candidate.v1.CompleteUploadRequest
-	11, // 16: smarthire.candidate.v1.CandidateService.GetCV:input_type -> smarthire.candidate.v1.GetCVRequest
-	12, // 17: smarthire.candidate.v1.CandidateService.ListMyCVs:input_type -> smarthire.candidate.v1.ListMyCVsRequest
-	14, // 18: smarthire.candidate.v1.CandidateService.UpdateParsedData:input_type -> smarthire.candidate.v1.UpdateParsedDataRequest
-	15, // 19: smarthire.candidate.v1.CandidateService.ReparseCV:input_type -> smarthire.candidate.v1.ReparseCVRequest
-	1,  // 20: smarthire.candidate.v1.CandidateService.GetMyProfile:output_type -> smarthire.candidate.v1.Profile
-	1,  // 21: smarthire.candidate.v1.CandidateService.UpsertMyProfile:output_type -> smarthire.candidate.v1.Profile
-	9,  // 22: smarthire.candidate.v1.CandidateService.CreateUploadURL:output_type -> smarthire.candidate.v1.CreateUploadURLResponse
-	7,  // 23: smarthire.candidate.v1.CandidateService.CompleteUpload:output_type -> smarthire.candidate.v1.CV
-	7,  // 24: smarthire.candidate.v1.CandidateService.GetCV:output_type -> smarthire.candidate.v1.CV
-	13, // 25: smarthire.candidate.v1.CandidateService.ListMyCVs:output_type -> smarthire.candidate.v1.ListMyCVsResponse
-	7,  // 26: smarthire.candidate.v1.CandidateService.UpdateParsedData:output_type -> smarthire.candidate.v1.CV
-	7,  // 27: smarthire.candidate.v1.CandidateService.ReparseCV:output_type -> smarthire.candidate.v1.CV
-	20, // [20:28] is the sub-list for method output_type
-	12, // [12:20] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	16, // 12: smarthire.candidate.v1.RecommendedJob.breakdown:type_name -> smarthire.candidate.v1.MatchBreakdown
+	18, // 13: smarthire.candidate.v1.ListRecommendedJobsResponse.jobs:type_name -> smarthire.candidate.v1.RecommendedJob
+	2,  // 14: smarthire.candidate.v1.CandidateService.GetMyProfile:input_type -> smarthire.candidate.v1.GetMyProfileRequest
+	3,  // 15: smarthire.candidate.v1.CandidateService.UpsertMyProfile:input_type -> smarthire.candidate.v1.UpsertMyProfileRequest
+	8,  // 16: smarthire.candidate.v1.CandidateService.CreateUploadURL:input_type -> smarthire.candidate.v1.CreateUploadURLRequest
+	10, // 17: smarthire.candidate.v1.CandidateService.CompleteUpload:input_type -> smarthire.candidate.v1.CompleteUploadRequest
+	11, // 18: smarthire.candidate.v1.CandidateService.GetCV:input_type -> smarthire.candidate.v1.GetCVRequest
+	12, // 19: smarthire.candidate.v1.CandidateService.ListMyCVs:input_type -> smarthire.candidate.v1.ListMyCVsRequest
+	14, // 20: smarthire.candidate.v1.CandidateService.UpdateParsedData:input_type -> smarthire.candidate.v1.UpdateParsedDataRequest
+	15, // 21: smarthire.candidate.v1.CandidateService.ReparseCV:input_type -> smarthire.candidate.v1.ReparseCVRequest
+	17, // 22: smarthire.candidate.v1.CandidateService.ListRecommendedJobs:input_type -> smarthire.candidate.v1.ListRecommendedJobsRequest
+	1,  // 23: smarthire.candidate.v1.CandidateService.GetMyProfile:output_type -> smarthire.candidate.v1.Profile
+	1,  // 24: smarthire.candidate.v1.CandidateService.UpsertMyProfile:output_type -> smarthire.candidate.v1.Profile
+	9,  // 25: smarthire.candidate.v1.CandidateService.CreateUploadURL:output_type -> smarthire.candidate.v1.CreateUploadURLResponse
+	7,  // 26: smarthire.candidate.v1.CandidateService.CompleteUpload:output_type -> smarthire.candidate.v1.CV
+	7,  // 27: smarthire.candidate.v1.CandidateService.GetCV:output_type -> smarthire.candidate.v1.CV
+	13, // 28: smarthire.candidate.v1.CandidateService.ListMyCVs:output_type -> smarthire.candidate.v1.ListMyCVsResponse
+	7,  // 29: smarthire.candidate.v1.CandidateService.UpdateParsedData:output_type -> smarthire.candidate.v1.CV
+	7,  // 30: smarthire.candidate.v1.CandidateService.ReparseCV:output_type -> smarthire.candidate.v1.CV
+	19, // 31: smarthire.candidate.v1.CandidateService.ListRecommendedJobs:output_type -> smarthire.candidate.v1.ListRecommendedJobsResponse
+	23, // [23:32] is the sub-list for method output_type
+	14, // [14:23] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_smarthire_candidate_v1_candidate_proto_init() }
@@ -1229,13 +1553,14 @@ func file_smarthire_candidate_v1_candidate_proto_init() {
 	file_smarthire_candidate_v1_candidate_proto_msgTypes[4].OneofWrappers = []any{}
 	file_smarthire_candidate_v1_candidate_proto_msgTypes[5].OneofWrappers = []any{}
 	file_smarthire_candidate_v1_candidate_proto_msgTypes[6].OneofWrappers = []any{}
+	file_smarthire_candidate_v1_candidate_proto_msgTypes[17].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_smarthire_candidate_v1_candidate_proto_rawDesc), len(file_smarthire_candidate_v1_candidate_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   15,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

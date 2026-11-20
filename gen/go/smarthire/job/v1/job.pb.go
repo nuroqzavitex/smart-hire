@@ -1056,6 +1056,351 @@ func (x *ListJobsFacets) GetLevels() []*Facet {
 	return nil
 }
 
+// MatchBreakdown explains a match score (copy of smarthire.ai.v1.ScoreBreakdown).
+type MatchBreakdown struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	SemanticSimilarity    float64                `protobuf:"fixed64,1,opt,name=semantic_similarity,json=semanticSimilarity,proto3" json:"semantic_similarity,omitempty"`
+	RequiredSkillCoverage float64                `protobuf:"fixed64,2,opt,name=required_skill_coverage,json=requiredSkillCoverage,proto3" json:"required_skill_coverage,omitempty"`
+	ExperienceFit         float64                `protobuf:"fixed64,3,opt,name=experience_fit,json=experienceFit,proto3" json:"experience_fit,omitempty"`
+	LocationFit           float64                `protobuf:"fixed64,4,opt,name=location_fit,json=locationFit,proto3" json:"location_fit,omitempty"`
+	MatchedSkills         []string               `protobuf:"bytes,5,rep,name=matched_skills,json=matchedSkills,proto3" json:"matched_skills,omitempty"`
+	MissingSkills         []string               `protobuf:"bytes,6,rep,name=missing_skills,json=missingSkills,proto3" json:"missing_skills,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *MatchBreakdown) Reset() {
+	*x = MatchBreakdown{}
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MatchBreakdown) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MatchBreakdown) ProtoMessage() {}
+
+func (x *MatchBreakdown) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MatchBreakdown.ProtoReflect.Descriptor instead.
+func (*MatchBreakdown) Descriptor() ([]byte, []int) {
+	return file_smarthire_job_v1_job_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *MatchBreakdown) GetSemanticSimilarity() float64 {
+	if x != nil {
+		return x.SemanticSimilarity
+	}
+	return 0
+}
+
+func (x *MatchBreakdown) GetRequiredSkillCoverage() float64 {
+	if x != nil {
+		return x.RequiredSkillCoverage
+	}
+	return 0
+}
+
+func (x *MatchBreakdown) GetExperienceFit() float64 {
+	if x != nil {
+		return x.ExperienceFit
+	}
+	return 0
+}
+
+func (x *MatchBreakdown) GetLocationFit() float64 {
+	if x != nil {
+		return x.LocationFit
+	}
+	return 0
+}
+
+func (x *MatchBreakdown) GetMatchedSkills() []string {
+	if x != nil {
+		return x.MatchedSkills
+	}
+	return nil
+}
+
+func (x *MatchBreakdown) GetMissingSkills() []string {
+	if x != nil {
+		return x.MissingSkills
+	}
+	return nil
+}
+
+type ListMatchedCandidatesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	TopK          int32                  `protobuf:"varint,2,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"` // 0 = default 20
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMatchedCandidatesRequest) Reset() {
+	*x = ListMatchedCandidatesRequest{}
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMatchedCandidatesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMatchedCandidatesRequest) ProtoMessage() {}
+
+func (x *ListMatchedCandidatesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMatchedCandidatesRequest.ProtoReflect.Descriptor instead.
+func (*ListMatchedCandidatesRequest) Descriptor() ([]byte, []int) {
+	return file_smarthire_job_v1_job_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListMatchedCandidatesRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ListMatchedCandidatesRequest) GetTopK() int32 {
+	if x != nil {
+		return x.TopK
+	}
+	return 0
+}
+
+type MatchedCandidate struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CandidateId   string                 `protobuf:"bytes,1,opt,name=candidate_id,json=candidateId,proto3" json:"candidate_id,omitempty"`
+	CvId          string                 `protobuf:"bytes,2,opt,name=cv_id,json=cvId,proto3" json:"cv_id,omitempty"`
+	Score         float64                `protobuf:"fixed64,3,opt,name=score,proto3" json:"score,omitempty"`
+	Breakdown     *MatchBreakdown        `protobuf:"bytes,4,opt,name=breakdown,proto3" json:"breakdown,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MatchedCandidate) Reset() {
+	*x = MatchedCandidate{}
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MatchedCandidate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MatchedCandidate) ProtoMessage() {}
+
+func (x *MatchedCandidate) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MatchedCandidate.ProtoReflect.Descriptor instead.
+func (*MatchedCandidate) Descriptor() ([]byte, []int) {
+	return file_smarthire_job_v1_job_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *MatchedCandidate) GetCandidateId() string {
+	if x != nil {
+		return x.CandidateId
+	}
+	return ""
+}
+
+func (x *MatchedCandidate) GetCvId() string {
+	if x != nil {
+		return x.CvId
+	}
+	return ""
+}
+
+func (x *MatchedCandidate) GetScore() float64 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
+}
+
+func (x *MatchedCandidate) GetBreakdown() *MatchBreakdown {
+	if x != nil {
+		return x.Breakdown
+	}
+	return nil
+}
+
+type ListMatchedCandidatesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Candidates    []*MatchedCandidate    `protobuf:"bytes,1,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	ModelVersion  string                 `protobuf:"bytes,2,opt,name=model_version,json=modelVersion,proto3" json:"model_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMatchedCandidatesResponse) Reset() {
+	*x = ListMatchedCandidatesResponse{}
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMatchedCandidatesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMatchedCandidatesResponse) ProtoMessage() {}
+
+func (x *ListMatchedCandidatesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMatchedCandidatesResponse.ProtoReflect.Descriptor instead.
+func (*ListMatchedCandidatesResponse) Descriptor() ([]byte, []int) {
+	return file_smarthire_job_v1_job_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListMatchedCandidatesResponse) GetCandidates() []*MatchedCandidate {
+	if x != nil {
+		return x.Candidates
+	}
+	return nil
+}
+
+func (x *ListMatchedCandidatesResponse) GetModelVersion() string {
+	if x != nil {
+		return x.ModelVersion
+	}
+	return ""
+}
+
+type BatchGetJobsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ids           []string               `protobuf:"bytes,1,rep,name=ids,proto3" json:"ids,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchGetJobsRequest) Reset() {
+	*x = BatchGetJobsRequest{}
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchGetJobsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchGetJobsRequest) ProtoMessage() {}
+
+func (x *BatchGetJobsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchGetJobsRequest.ProtoReflect.Descriptor instead.
+func (*BatchGetJobsRequest) Descriptor() ([]byte, []int) {
+	return file_smarthire_job_v1_job_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *BatchGetJobsRequest) GetIds() []string {
+	if x != nil {
+		return x.Ids
+	}
+	return nil
+}
+
+type BatchGetJobsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Jobs          []*Job                 `protobuf:"bytes,1,rep,name=jobs,proto3" json:"jobs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BatchGetJobsResponse) Reset() {
+	*x = BatchGetJobsResponse{}
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BatchGetJobsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BatchGetJobsResponse) ProtoMessage() {}
+
+func (x *BatchGetJobsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_job_v1_job_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BatchGetJobsResponse.ProtoReflect.Descriptor instead.
+func (*BatchGetJobsResponse) Descriptor() ([]byte, []int) {
+	return file_smarthire_job_v1_job_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *BatchGetJobsResponse) GetJobs() []*Job {
+	if x != nil {
+		return x.Jobs
+	}
+	return nil
+}
+
 var File_smarthire_job_v1_job_proto protoreflect.FileDescriptor
 
 const file_smarthire_job_v1_job_proto_rawDesc = "" +
@@ -1157,7 +1502,31 @@ const file_smarthire_job_v1_job_proto_rawDesc = "" +
 	"\x0eListJobsFacets\x12/\n" +
 	"\x06skills\x18\x01 \x03(\v2\x17.smarthire.job.v1.FacetR\x06skills\x125\n" +
 	"\tlocations\x18\x02 \x03(\v2\x17.smarthire.job.v1.FacetR\tlocations\x12/\n" +
-	"\x06levels\x18\x03 \x03(\v2\x17.smarthire.job.v1.FacetR\x06levels*\x91\x01\n" +
+	"\x06levels\x18\x03 \x03(\v2\x17.smarthire.job.v1.FacetR\x06levels\"\x91\x02\n" +
+	"\x0eMatchBreakdown\x12/\n" +
+	"\x13semantic_similarity\x18\x01 \x01(\x01R\x12semanticSimilarity\x126\n" +
+	"\x17required_skill_coverage\x18\x02 \x01(\x01R\x15requiredSkillCoverage\x12%\n" +
+	"\x0eexperience_fit\x18\x03 \x01(\x01R\rexperienceFit\x12!\n" +
+	"\flocation_fit\x18\x04 \x01(\x01R\vlocationFit\x12%\n" +
+	"\x0ematched_skills\x18\x05 \x03(\tR\rmatchedSkills\x12%\n" +
+	"\x0emissing_skills\x18\x06 \x03(\tR\rmissingSkills\"X\n" +
+	"\x1cListMatchedCandidatesRequest\x12\x18\n" +
+	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\x12\x1e\n" +
+	"\x05top_k\x18\x02 \x01(\x05B\t\xbaH\x06\x1a\x04\x182(\x00R\x04topK\"\xa0\x01\n" +
+	"\x10MatchedCandidate\x12!\n" +
+	"\fcandidate_id\x18\x01 \x01(\tR\vcandidateId\x12\x13\n" +
+	"\x05cv_id\x18\x02 \x01(\tR\x04cvId\x12\x14\n" +
+	"\x05score\x18\x03 \x01(\x01R\x05score\x12>\n" +
+	"\tbreakdown\x18\x04 \x01(\v2 .smarthire.job.v1.MatchBreakdownR\tbreakdown\"\x88\x01\n" +
+	"\x1dListMatchedCandidatesResponse\x12B\n" +
+	"\n" +
+	"candidates\x18\x01 \x03(\v2\".smarthire.job.v1.MatchedCandidateR\n" +
+	"candidates\x12#\n" +
+	"\rmodel_version\x18\x02 \x01(\tR\fmodelVersion\"8\n" +
+	"\x13BatchGetJobsRequest\x12!\n" +
+	"\x03ids\x18\x01 \x03(\tB\x0f\xbaH\f\x92\x01\t\x102\"\x05r\x03\xb0\x01\x01R\x03ids\"A\n" +
+	"\x14BatchGetJobsResponse\x12)\n" +
+	"\x04jobs\x18\x01 \x03(\v2\x15.smarthire.job.v1.JobR\x04jobs*\x91\x01\n" +
 	"\bJobLevel\x12\x19\n" +
 	"\x15JOB_LEVEL_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10JOB_LEVEL_INTERN\x10\x01\x12\x14\n" +
@@ -1169,7 +1538,7 @@ const file_smarthire_job_v1_job_proto_rawDesc = "" +
 	"\x16JOB_STATUS_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10JOB_STATUS_DRAFT\x10\x01\x12\x13\n" +
 	"\x0fJOB_STATUS_OPEN\x10\x02\x12\x15\n" +
-	"\x11JOB_STATUS_CLOSED\x10\x032\xa7\x06\n" +
+	"\x11JOB_STATUS_CLOSED\x10\x032\xa3\b\n" +
 	"\n" +
 	"JobService\x12[\n" +
 	"\tCreateJob\x12\".smarthire.job.v1.CreateJobRequest\x1a\x15.smarthire.job.v1.Job\"\x13\x82\xd3\xe4\x93\x02\r:\x01*\"\b/v1/jobs\x12`\n" +
@@ -1182,7 +1551,9 @@ const file_smarthire_job_v1_job_proto_rawDesc = "" +
 	"\bListJobs\x12!.smarthire.job.v1.ListJobsRequest\x1a\".smarthire.job.v1.ListJobsResponse\"\x10\x82\xd3\xe4\x93\x02\n" +
 	"\x12\b/v1/jobs\x12j\n" +
 	"\n" +
-	"ListMyJobs\x12#.smarthire.job.v1.ListMyJobsRequest\x1a\".smarthire.job.v1.ListJobsResponse\"\x13\x82\xd3\xe4\x93\x02\r\x12\v/v1/me/jobsB\xc3\x01\n" +
+	"ListMyJobs\x12#.smarthire.job.v1.ListMyJobsRequest\x1a\".smarthire.job.v1.ListJobsResponse\"\x13\x82\xd3\xe4\x93\x02\r\x12\v/v1/me/jobs\x12\x9a\x01\n" +
+	"\x15ListMatchedCandidates\x12..smarthire.job.v1.ListMatchedCandidatesRequest\x1a/.smarthire.job.v1.ListMatchedCandidatesResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/jobs/{id}/candidates\x12]\n" +
+	"\fBatchGetJobs\x12%.smarthire.job.v1.BatchGetJobsRequest\x1a&.smarthire.job.v1.BatchGetJobsResponseB\xc3\x01\n" +
 	"\x14com.smarthire.job.v1B\bJobProtoP\x01Z?github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1;jobv1\xa2\x02\x03SJX\xaa\x02\x10Smarthire.Job.V1\xca\x02\x10Smarthire\\Job\\V1\xe2\x02\x1cSmarthire\\Job\\V1\\GPBMetadata\xea\x02\x12Smarthire::Job::V1b\x06proto3"
 
 var (
@@ -1198,32 +1569,38 @@ func file_smarthire_job_v1_job_proto_rawDescGZIP() []byte {
 }
 
 var file_smarthire_job_v1_job_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_smarthire_job_v1_job_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_smarthire_job_v1_job_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_smarthire_job_v1_job_proto_goTypes = []any{
-	(JobLevel)(0),                 // 0: smarthire.job.v1.JobLevel
-	(JobStatus)(0),                // 1: smarthire.job.v1.JobStatus
-	(*StringList)(nil),            // 2: smarthire.job.v1.StringList
-	(*Job)(nil),                   // 3: smarthire.job.v1.Job
-	(*CreateJobRequest)(nil),      // 4: smarthire.job.v1.CreateJobRequest
-	(*UpdateJobRequest)(nil),      // 5: smarthire.job.v1.UpdateJobRequest
-	(*PublishJobRequest)(nil),     // 6: smarthire.job.v1.PublishJobRequest
-	(*CloseJobRequest)(nil),       // 7: smarthire.job.v1.CloseJobRequest
-	(*DeleteJobRequest)(nil),      // 8: smarthire.job.v1.DeleteJobRequest
-	(*GetJobRequest)(nil),         // 9: smarthire.job.v1.GetJobRequest
-	(*ListJobsRequest)(nil),       // 10: smarthire.job.v1.ListJobsRequest
-	(*ListMyJobsRequest)(nil),     // 11: smarthire.job.v1.ListMyJobsRequest
-	(*ListJobsResponse)(nil),      // 12: smarthire.job.v1.ListJobsResponse
-	(*Facet)(nil),                 // 13: smarthire.job.v1.Facet
-	(*ListJobsFacets)(nil),        // 14: smarthire.job.v1.ListJobsFacets
-	(*timestamppb.Timestamp)(nil), // 15: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 16: google.protobuf.Empty
+	(JobLevel)(0),                         // 0: smarthire.job.v1.JobLevel
+	(JobStatus)(0),                        // 1: smarthire.job.v1.JobStatus
+	(*StringList)(nil),                    // 2: smarthire.job.v1.StringList
+	(*Job)(nil),                           // 3: smarthire.job.v1.Job
+	(*CreateJobRequest)(nil),              // 4: smarthire.job.v1.CreateJobRequest
+	(*UpdateJobRequest)(nil),              // 5: smarthire.job.v1.UpdateJobRequest
+	(*PublishJobRequest)(nil),             // 6: smarthire.job.v1.PublishJobRequest
+	(*CloseJobRequest)(nil),               // 7: smarthire.job.v1.CloseJobRequest
+	(*DeleteJobRequest)(nil),              // 8: smarthire.job.v1.DeleteJobRequest
+	(*GetJobRequest)(nil),                 // 9: smarthire.job.v1.GetJobRequest
+	(*ListJobsRequest)(nil),               // 10: smarthire.job.v1.ListJobsRequest
+	(*ListMyJobsRequest)(nil),             // 11: smarthire.job.v1.ListMyJobsRequest
+	(*ListJobsResponse)(nil),              // 12: smarthire.job.v1.ListJobsResponse
+	(*Facet)(nil),                         // 13: smarthire.job.v1.Facet
+	(*ListJobsFacets)(nil),                // 14: smarthire.job.v1.ListJobsFacets
+	(*MatchBreakdown)(nil),                // 15: smarthire.job.v1.MatchBreakdown
+	(*ListMatchedCandidatesRequest)(nil),  // 16: smarthire.job.v1.ListMatchedCandidatesRequest
+	(*MatchedCandidate)(nil),              // 17: smarthire.job.v1.MatchedCandidate
+	(*ListMatchedCandidatesResponse)(nil), // 18: smarthire.job.v1.ListMatchedCandidatesResponse
+	(*BatchGetJobsRequest)(nil),           // 19: smarthire.job.v1.BatchGetJobsRequest
+	(*BatchGetJobsResponse)(nil),          // 20: smarthire.job.v1.BatchGetJobsResponse
+	(*timestamppb.Timestamp)(nil),         // 21: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                 // 22: google.protobuf.Empty
 }
 var file_smarthire_job_v1_job_proto_depIdxs = []int32{
 	0,  // 0: smarthire.job.v1.Job.level:type_name -> smarthire.job.v1.JobLevel
 	1,  // 1: smarthire.job.v1.Job.status:type_name -> smarthire.job.v1.JobStatus
-	15, // 2: smarthire.job.v1.Job.created_at:type_name -> google.protobuf.Timestamp
-	15, // 3: smarthire.job.v1.Job.updated_at:type_name -> google.protobuf.Timestamp
-	15, // 4: smarthire.job.v1.Job.published_at:type_name -> google.protobuf.Timestamp
+	21, // 2: smarthire.job.v1.Job.created_at:type_name -> google.protobuf.Timestamp
+	21, // 3: smarthire.job.v1.Job.updated_at:type_name -> google.protobuf.Timestamp
+	21, // 4: smarthire.job.v1.Job.published_at:type_name -> google.protobuf.Timestamp
 	0,  // 5: smarthire.job.v1.CreateJobRequest.level:type_name -> smarthire.job.v1.JobLevel
 	2,  // 6: smarthire.job.v1.UpdateJobRequest.required_skills:type_name -> smarthire.job.v1.StringList
 	2,  // 7: smarthire.job.v1.UpdateJobRequest.nice_to_have_skills:type_name -> smarthire.job.v1.StringList
@@ -1235,27 +1612,34 @@ var file_smarthire_job_v1_job_proto_depIdxs = []int32{
 	13, // 13: smarthire.job.v1.ListJobsFacets.skills:type_name -> smarthire.job.v1.Facet
 	13, // 14: smarthire.job.v1.ListJobsFacets.locations:type_name -> smarthire.job.v1.Facet
 	13, // 15: smarthire.job.v1.ListJobsFacets.levels:type_name -> smarthire.job.v1.Facet
-	4,  // 16: smarthire.job.v1.JobService.CreateJob:input_type -> smarthire.job.v1.CreateJobRequest
-	5,  // 17: smarthire.job.v1.JobService.UpdateJob:input_type -> smarthire.job.v1.UpdateJobRequest
-	6,  // 18: smarthire.job.v1.JobService.PublishJob:input_type -> smarthire.job.v1.PublishJobRequest
-	7,  // 19: smarthire.job.v1.JobService.CloseJob:input_type -> smarthire.job.v1.CloseJobRequest
-	8,  // 20: smarthire.job.v1.JobService.DeleteJob:input_type -> smarthire.job.v1.DeleteJobRequest
-	9,  // 21: smarthire.job.v1.JobService.GetJob:input_type -> smarthire.job.v1.GetJobRequest
-	10, // 22: smarthire.job.v1.JobService.ListJobs:input_type -> smarthire.job.v1.ListJobsRequest
-	11, // 23: smarthire.job.v1.JobService.ListMyJobs:input_type -> smarthire.job.v1.ListMyJobsRequest
-	3,  // 24: smarthire.job.v1.JobService.CreateJob:output_type -> smarthire.job.v1.Job
-	3,  // 25: smarthire.job.v1.JobService.UpdateJob:output_type -> smarthire.job.v1.Job
-	3,  // 26: smarthire.job.v1.JobService.PublishJob:output_type -> smarthire.job.v1.Job
-	3,  // 27: smarthire.job.v1.JobService.CloseJob:output_type -> smarthire.job.v1.Job
-	16, // 28: smarthire.job.v1.JobService.DeleteJob:output_type -> google.protobuf.Empty
-	3,  // 29: smarthire.job.v1.JobService.GetJob:output_type -> smarthire.job.v1.Job
-	12, // 30: smarthire.job.v1.JobService.ListJobs:output_type -> smarthire.job.v1.ListJobsResponse
-	12, // 31: smarthire.job.v1.JobService.ListMyJobs:output_type -> smarthire.job.v1.ListJobsResponse
-	24, // [24:32] is the sub-list for method output_type
-	16, // [16:24] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	15, // 16: smarthire.job.v1.MatchedCandidate.breakdown:type_name -> smarthire.job.v1.MatchBreakdown
+	17, // 17: smarthire.job.v1.ListMatchedCandidatesResponse.candidates:type_name -> smarthire.job.v1.MatchedCandidate
+	3,  // 18: smarthire.job.v1.BatchGetJobsResponse.jobs:type_name -> smarthire.job.v1.Job
+	4,  // 19: smarthire.job.v1.JobService.CreateJob:input_type -> smarthire.job.v1.CreateJobRequest
+	5,  // 20: smarthire.job.v1.JobService.UpdateJob:input_type -> smarthire.job.v1.UpdateJobRequest
+	6,  // 21: smarthire.job.v1.JobService.PublishJob:input_type -> smarthire.job.v1.PublishJobRequest
+	7,  // 22: smarthire.job.v1.JobService.CloseJob:input_type -> smarthire.job.v1.CloseJobRequest
+	8,  // 23: smarthire.job.v1.JobService.DeleteJob:input_type -> smarthire.job.v1.DeleteJobRequest
+	9,  // 24: smarthire.job.v1.JobService.GetJob:input_type -> smarthire.job.v1.GetJobRequest
+	10, // 25: smarthire.job.v1.JobService.ListJobs:input_type -> smarthire.job.v1.ListJobsRequest
+	11, // 26: smarthire.job.v1.JobService.ListMyJobs:input_type -> smarthire.job.v1.ListMyJobsRequest
+	16, // 27: smarthire.job.v1.JobService.ListMatchedCandidates:input_type -> smarthire.job.v1.ListMatchedCandidatesRequest
+	19, // 28: smarthire.job.v1.JobService.BatchGetJobs:input_type -> smarthire.job.v1.BatchGetJobsRequest
+	3,  // 29: smarthire.job.v1.JobService.CreateJob:output_type -> smarthire.job.v1.Job
+	3,  // 30: smarthire.job.v1.JobService.UpdateJob:output_type -> smarthire.job.v1.Job
+	3,  // 31: smarthire.job.v1.JobService.PublishJob:output_type -> smarthire.job.v1.Job
+	3,  // 32: smarthire.job.v1.JobService.CloseJob:output_type -> smarthire.job.v1.Job
+	22, // 33: smarthire.job.v1.JobService.DeleteJob:output_type -> google.protobuf.Empty
+	3,  // 34: smarthire.job.v1.JobService.GetJob:output_type -> smarthire.job.v1.Job
+	12, // 35: smarthire.job.v1.JobService.ListJobs:output_type -> smarthire.job.v1.ListJobsResponse
+	12, // 36: smarthire.job.v1.JobService.ListMyJobs:output_type -> smarthire.job.v1.ListJobsResponse
+	18, // 37: smarthire.job.v1.JobService.ListMatchedCandidates:output_type -> smarthire.job.v1.ListMatchedCandidatesResponse
+	20, // 38: smarthire.job.v1.JobService.BatchGetJobs:output_type -> smarthire.job.v1.BatchGetJobsResponse
+	29, // [29:39] is the sub-list for method output_type
+	19, // [19:29] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_smarthire_job_v1_job_proto_init() }
@@ -1273,7 +1657,7 @@ func file_smarthire_job_v1_job_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_smarthire_job_v1_job_proto_rawDesc), len(file_smarthire_job_v1_job_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   13,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

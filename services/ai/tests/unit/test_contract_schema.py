@@ -114,3 +114,7 @@ def test_parsed_cv_fields_match_contract(contracts_dir: Path, model: type[BaseMo
     assert required == set(schema_def["required"])
     assert schema_def["additionalProperties"] is False
     assert model.model_config.get("extra") == "forbid"
+
+
+def test_cv_updated_parsed_defs_match_cv_parsed(contracts_dir: Path) -> None:
+    assert _schema(contracts_dir, "cv.updated")["$defs"] == _schema(contracts_dir, "cv.parsed")["$defs"]

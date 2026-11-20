@@ -1,0 +1,9 @@
+version: v2
+# Python code for the AI service (smarthire.ai.v1 only): make proto runs it with --path smarthire/ai.
+plugins:
+  - remote: buf.build/protocolbuffers/python:v36.2
+    out: ../../services/ai/src
+  - remote: buf.build/protocolbuffers/pyi:v36.2
+    out: ../../services/ai/src
+  - remote: buf.build/grpc/python:v1.85.3
+    out: ../../services/ai/src

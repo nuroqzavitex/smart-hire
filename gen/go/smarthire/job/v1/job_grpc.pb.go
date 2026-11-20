@@ -20,14 +20,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	JobService_CreateJob_FullMethodName  = "/smarthire.job.v1.JobService/CreateJob"
-	JobService_UpdateJob_FullMethodName  = "/smarthire.job.v1.JobService/UpdateJob"
-	JobService_PublishJob_FullMethodName = "/smarthire.job.v1.JobService/PublishJob"
-	JobService_CloseJob_FullMethodName   = "/smarthire.job.v1.JobService/CloseJob"
-	JobService_DeleteJob_FullMethodName  = "/smarthire.job.v1.JobService/DeleteJob"
-	JobService_GetJob_FullMethodName     = "/smarthire.job.v1.JobService/GetJob"
-	JobService_ListJobs_FullMethodName   = "/smarthire.job.v1.JobService/ListJobs"
-	JobService_ListMyJobs_FullMethodName = "/smarthire.job.v1.JobService/ListMyJobs"
+	JobService_CreateJob_FullMethodName             = "/smarthire.job.v1.JobService/CreateJob"
+	JobService_UpdateJob_FullMethodName             = "/smarthire.job.v1.JobService/UpdateJob"
+	JobService_PublishJob_FullMethodName            = "/smarthire.job.v1.JobService/PublishJob"
+	JobService_CloseJob_FullMethodName              = "/smarthire.job.v1.JobService/CloseJob"
+	JobService_DeleteJob_FullMethodName             = "/smarthire.job.v1.JobService/DeleteJob"
+	JobService_GetJob_FullMethodName                = "/smarthire.job.v1.JobService/GetJob"
+	JobService_ListJobs_FullMethodName              = "/smarthire.job.v1.JobService/ListJobs"
+	JobService_ListMyJobs_FullMethodName            = "/smarthire.job.v1.JobService/ListMyJobs"
+	JobService_ListMatchedCandidates_FullMethodName = "/smarthire.job.v1.JobService/ListMatchedCandidates"
+	JobService_BatchGetJobs_FullMethodName          = "/smarthire.job.v1.JobService/BatchGetJobs"
 )
 
 // JobServiceClient is the client API for JobService service.
@@ -42,6 +44,10 @@ type JobServiceClient interface {
 	GetJob(ctx context.Context, in *GetJobRequest, opts ...grpc.CallOption) (*Job, error)
 	ListJobs(ctx context.Context, in *ListJobsRequest, opts ...grpc.CallOption) (*ListJobsResponse, error)
 	ListMyJobs(ctx context.Context, in *ListMyJobsRequest, opts ...grpc.CallOption) (*ListJobsResponse, error)
+	// Candidates ranked for a job by the AI service; only the owning recruiter (or an admin).
+	ListMatchedCandidates(ctx context.Context, in *ListMatchedCandidatesRequest, opts ...grpc.CallOption) (*ListMatchedCandidatesResponse, error)
+	// Internal (no HTTP route): open jobs by id, in request order; any authenticated caller.
+	BatchGetJobs(ctx context.Context, in *BatchGetJobsRequest, opts ...grpc.CallOption) (*BatchGetJobsResponse, error)
 }
 
 type jobServiceClient struct {
@@ -132,6 +138,26 @@ func (c *jobServiceClient) ListMyJobs(ctx context.Context, in *ListMyJobsRequest
 	return out, nil
 }
 
+func (c *jobServiceClient) ListMatchedCandidates(ctx context.Context, in *ListMatchedCandidatesRequest, opts ...grpc.CallOption) (*ListMatchedCandidatesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMatchedCandidatesResponse)
+	err := c.cc.Invoke(ctx, JobService_ListMatchedCandidates_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *jobServiceClient) BatchGetJobs(ctx context.Context, in *BatchGetJobsRequest, opts ...grpc.CallOption) (*BatchGetJobsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchGetJobsResponse)
+	err := c.cc.Invoke(ctx, JobService_BatchGetJobs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // JobServiceServer is the server API for JobService service.
 // All implementations must embed UnimplementedJobServiceServer
 // for forward compatibility.
@@ -144,6 +170,10 @@ type JobServiceServer interface {
 	GetJob(context.Context, *GetJobRequest) (*Job, error)
 	ListJobs(context.Context, *ListJobsRequest) (*ListJobsResponse, error)
 	ListMyJobs(context.Context, *ListMyJobsRequest) (*ListJobsResponse, error)
+	// Candidates ranked for a job by the AI service; only the owning recruiter (or an admin).
+	ListMatchedCandidates(context.Context, *ListMatchedCandidatesRequest) (*ListMatchedCandidatesResponse, error)
+	// Internal (no HTTP route): open jobs by id, in request order; any authenticated caller.
+	BatchGetJobs(context.Context, *BatchGetJobsRequest) (*BatchGetJobsResponse, error)
 	mustEmbedUnimplementedJobServiceServer()
 }
 
@@ -177,6 +207,12 @@ func (UnimplementedJobServiceServer) ListJobs(context.Context, *ListJobsRequest)
 }
 func (UnimplementedJobServiceServer) ListMyJobs(context.Context, *ListMyJobsRequest) (*ListJobsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListMyJobs not implemented")
+}
+func (UnimplementedJobServiceServer) ListMatchedCandidates(context.Context, *ListMatchedCandidatesRequest) (*ListMatchedCandidatesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListMatchedCandidates not implemented")
+}
+func (UnimplementedJobServiceServer) BatchGetJobs(context.Context, *BatchGetJobsRequest) (*BatchGetJobsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BatchGetJobs not implemented")
 }
 func (UnimplementedJobServiceServer) mustEmbedUnimplementedJobServiceServer() {}
 func (UnimplementedJobServiceServer) testEmbeddedByValue()                    {}
@@ -343,6 +379,42 @@ func _JobService_ListMyJobs_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _JobService_ListMatchedCandidates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMatchedCandidatesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(JobServiceServer).ListMatchedCandidates(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: JobService_ListMatchedCandidates_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(JobServiceServer).ListMatchedCandidates(ctx, req.(*ListMatchedCandidatesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _JobService_BatchGetJobs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchGetJobsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(JobServiceServer).BatchGetJobs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: JobService_BatchGetJobs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(JobServiceServer).BatchGetJobs(ctx, req.(*BatchGetJobsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // JobService_ServiceDesc is the grpc.ServiceDesc for JobService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -381,6 +453,14 @@ var JobService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListMyJobs",
 			Handler:    _JobService_ListMyJobs_Handler,
+		},
+		{
+			MethodName: "ListMatchedCandidates",
+			Handler:    _JobService_ListMatchedCandidates_Handler,
+		},
+		{
+			MethodName: "BatchGetJobs",
+			Handler:    _JobService_BatchGetJobs_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthire.local/events/cv.updated.v1.json",
+  "title": "cv.updated v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "source",
+    "occurred_at",
+    "trace_id",
+    "correlation_id",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "event_type": {
+      "const": "cv.updated"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "source": {
+      "const": "candidate-service"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trace_id": {
+      "type": "string"
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cv_id",
+        "candidate_id",
+        "version",
+        "status",
+        "parsed",
+        "parsed_at"
+      ],
+      "properties": {
+        "cv_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "candidate_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "UPLOADED",
+            "PARSED",
+            "FAILED"
+          ]
+        },
+        "parsed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParsedCV"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parsed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Education": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "school",
+        "degree",
+        "major",
+        "end_year"
+      ],
+      "properties": {
+        "school": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "degree": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200
+        },
+        "major": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200
+        },
+        "end_year": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1900,
+          "maximum": 2100
+        }
+      }
+    },
+    "Experience": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "company",
+        "title",
+        "start",
+        "end",
+        "highlights"
+      ],
+      "properties": {
+        "company": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "start": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        },
+        "end": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        },
+        "highlights": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          }
+        }
+      }
+    },
+    "ParsedCV": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "full_name",
+        "email",
+        "skills",
+        "years_of_experience",
+        "current_title",
+        "education",
+        "experiences",
+        "languages",
+        "location"
+      ],
+      "properties": {
+        "full_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200
+        },
+        "email": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 254
+        },
+        "skills": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "maxLength": 50
+          }
+        },
+        "years_of_experience": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 60
+        },
+        "current_title": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200
+        },
+        "education": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/Education"
+          }
+        },
+        "experiences": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/Experience"
+          }
+        },
+        "languages": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "maxLength": 50
+          }
+        },
+        "location": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200
+        }
+      }
+    }
+  }
+}
