@@ -251,3 +251,34 @@ def worker(engine: Engine, kafka: Kafka, minio_client: Any) -> Iterator[None]:
 
 def dumps(obj: Any) -> bytes:
     return json.dumps(obj).encode()
+
+
+QDRANT_IMAGE = "qdrant/qdrant:v1.20.2"
+
+
+@pytest.fixture(scope="session")
+def qdrant_url() -> Iterator[str]:
+    import urllib.request
+
+    from testcontainers.core.container import DockerContainer
+
+    with DockerContainer(QDRANT_IMAGE).with_exposed_ports(6333) as qd:
+        url = f"http://{qd.get_container_host_ip()}:{qd.get_exposed_port(6333)}"
+        deadline = time.monotonic() + 60
+        while True:
+            try:
+                with urllib.request.urlopen(url + "/readyz", timeout=2) as resp:  # noqa: S310 - test URL
+                    if resp.status == 200:
+                        break
+            except OSError:
+                pass
+            if time.monotonic() > deadline:
+                raise RuntimeError("qdrant did not become ready")
+            time.sleep(0.5)
+        yield url
+
+
+@pytest.fixture
+def clean_matching(engine: Engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("TRUNCATE match_jobs, match_cvs, match_results, processed_events, outbox"))

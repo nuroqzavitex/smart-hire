@@ -101,7 +101,7 @@ opensearch-image:
 	$(COMPOSE) build opensearch
 
 infra-up: minio-image opensearch-image
-	$(COMPOSE) up -d --wait postgres redis redpanda redpanda-console minio opensearch
+	$(COMPOSE) up -d --wait postgres redis redpanda redpanda-console minio opensearch qdrant
 	$(COMPOSE) run --rm topics-init && $(COMPOSE) run --rm minio-init
 
 obs-up:

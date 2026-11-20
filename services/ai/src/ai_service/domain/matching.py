@@ -130,3 +130,13 @@ def cv_text(cv: ParsedCV) -> str:
     if cv.languages:
         parts.append("Languages: " + ", ".join(cv.languages))
     return "\n".join(parts)
+
+
+@dataclass(frozen=True)
+class MatchRow:
+    job_id: UUID
+    cv_id: UUID
+    candidate_id: UUID
+    score: float
+    breakdown: Breakdown
+    model_version: str
