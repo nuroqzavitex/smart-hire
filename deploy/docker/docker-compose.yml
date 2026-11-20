@@ -228,6 +228,10 @@ services:
       # Required by Settings; the API itself never reads objects.
       AI_S3_ACCESS_KEY: ${AI_S3_ACCESS_KEY:?set AI_S3_ACCESS_KEY in .env}
       AI_S3_SECRET_KEY: ${AI_S3_SECRET_KEY:?set AI_S3_SECRET_KEY in .env}
+      AI_QDRANT_URL: http://qdrant:6333
+      # Must match ai-matcher: the model version names the Qdrant collections.
+      AI_EMBEDDING_PROVIDER: ${AI_EMBEDDING_PROVIDER:-fake}
+      AI_GEMINI_API_KEY: ${AI_GEMINI_API_KEY:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/readyz', timeout=2)"]
@@ -237,6 +241,8 @@ services:
     depends_on:
       ai-migrate:
         condition: service_completed_successfully
+      qdrant:
+        condition: service_started
     restart: unless-stopped
 
   gateway:

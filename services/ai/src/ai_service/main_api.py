@@ -1,4 +1,4 @@
-"""ai-api: health, readiness and Prometheus metrics endpoints."""
+"""ai-api: health, readiness and Prometheus metrics over HTTP, plus the AIService gRPC server."""
 
 import logging
 from collections.abc import Callable, Iterable
@@ -15,13 +15,21 @@ from prometheus_client import (
 )
 from prometheus_client.core import GaugeMetricFamily, Metric
 from prometheus_client.registry import Collector
+from qdrant_client import QdrantClient
 from sqlalchemy import Engine, text
 
 from ai_service.adapters.db import make_engine, outbox_pending
+from ai_service.adapters.embedder import build_embedder
+from ai_service.adapters.grpc_server import AIServicer, build_server
+from ai_service.adapters.match_store import PgMatchStore
+from ai_service.adapters.vectors import QdrantVectors
 from ai_service.config import load_settings
 from ai_service.observability import setup_logging, setup_otel
 
 log = logging.getLogger("ai_service.api")
+
+GRPC_GRACE_S = 5
+QDRANT_TIMEOUT_S = 5
 
 
 class OutboxPendingCollector(Collector):
@@ -84,9 +92,17 @@ def main() -> None:
     shutdown = setup_otel("ai-api")
     engine = make_engine(settings.db_dsn)
     app = create_app(_ready_check(engine), lambda: outbox_pending(engine))
+    # Same provider/model as ai-matcher, so both use the same Qdrant collections.
+    model_version = build_embedder(settings).model_version
+    vectors = QdrantVectors(QdrantClient(url=settings.qdrant_url, timeout=QDRANT_TIMEOUT_S), model_version)
+    servicer = AIServicer(PgMatchStore(engine), vectors, model_version)
+    grpc_server, _ = build_server(servicer, f"0.0.0.0:{settings.grpc_port}")
+    grpc_server.start()
+    log.info("grpc listening", extra={"port": settings.grpc_port, "model_version": model_version})
     try:
         uvicorn.run(app, host="0.0.0.0", port=settings.http_port, log_config=None)  # noqa: S104
     finally:
+        grpc_server.stop(GRPC_GRACE_S).wait()
         shutdown()
         engine.dispose()
 
