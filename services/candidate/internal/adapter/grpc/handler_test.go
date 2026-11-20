@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	candidatev1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/candidate/v1"
+	"github.com/nuroqzavitex/smarthire/pkg/apperr"
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
 	"github.com/nuroqzavitex/smarthire/pkg/authz/authztest"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
@@ -44,6 +45,14 @@ type fakeUC struct {
 	id       uuid.UUID
 	pageReq  app.PageRequest
 	parsed   domain.ParsedCV
+	recs     app.RecommendedJobs
+	topK     int
+}
+
+func (f *fakeUC) ListRecommendedJobs(_ context.Context, id uuid.UUID, topK int) (app.RecommendedJobs, error) {
+	f.calls++
+	f.id, f.topK = id, topK
+	return f.recs, f.err
 }
 
 func (f *fakeUC) GetProfile(context.Context) (domain.Candidate, error) {
@@ -376,4 +385,39 @@ func TestHandler_ListMyCVs(t *testing.T) {
 
 	_, err = e.client.ListMyCVs(e.candidateCtx(t), &candidatev1.ListMyCVsRequest{PageSize: 51})
 	assert.Equal(t, codes.InvalidArgument, code(err))
+}
+
+func TestHandler_ListRecommendedJobsMaps(t *testing.T) {
+	e := newEnv(t)
+	job := uuid.New()
+	smax := 3000
+	e.uc.recs = app.RecommendedJobs{ModelVersion: "m@768", Jobs: []app.RecommendedJob{{
+		Job:   app.JobSummary{ID: job, Title: "Go dev", Level: "senior", Location: "Hà Nội", SalaryMax: &smax},
+		Score: 77.7, Breakdown: app.MatchBreakdown{LocationFit: 1, MissingSkills: []string{"Rust"}},
+	}}}
+	id := uuid.New()
+	resp, err := e.client.ListRecommendedJobs(e.candidateCtx(t), &candidatev1.ListRecommendedJobsRequest{Id: id.String(), TopK: 3})
+	require.NoError(t, err)
+	assert.Equal(t, id, e.uc.id)
+	assert.Equal(t, 3, e.uc.topK)
+	assert.Equal(t, "m@768", resp.GetModelVersion())
+	require.Len(t, resp.GetJobs(), 1)
+	j := resp.GetJobs()[0]
+	assert.Equal(t, job.String(), j.GetJobId())
+	assert.Equal(t, "Go dev", j.GetTitle())
+	assert.Equal(t, "senior", j.GetLevel())
+	assert.Equal(t, int32(3000), j.GetSalaryMax())
+	assert.Nil(t, j.SalaryMin)
+	assert.InDelta(t, 77.7, j.GetScore(), 1e-9)
+	assert.Equal(t, []string{"Rust"}, j.GetBreakdown().GetMissingSkills())
+
+	_, err = e.client.ListRecommendedJobs(e.candidateCtx(t), &candidatev1.ListRecommendedJobsRequest{Id: "x"})
+	assert.Equal(t, codes.InvalidArgument, code(err))
+}
+
+func TestHandler_ListRecommendedJobsUnavailable(t *testing.T) {
+	e := newEnv(t)
+	e.uc.err = apperr.New(apperr.ErrUnavailable, "matching temporarily unavailable")
+	_, err := e.client.ListRecommendedJobs(e.candidateCtx(t), &candidatev1.ListRecommendedJobsRequest{Id: uuid.NewString()})
+	assert.Equal(t, codes.Unavailable, code(err))
 }

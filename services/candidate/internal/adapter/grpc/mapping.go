@@ -155,3 +155,31 @@ func fromInt32(v *int32) *int {
 	x := int(*v)
 	return &x
 }
+
+func recommendationsToProto(r app.RecommendedJobs) *candidatev1.ListRecommendedJobsResponse {
+	out := &candidatev1.ListRecommendedJobsResponse{
+		ModelVersion: r.ModelVersion,
+		Jobs:         make([]*candidatev1.RecommendedJob, len(r.Jobs)),
+	}
+	for i, j := range r.Jobs {
+		b := j.Breakdown
+		out.Jobs[i] = &candidatev1.RecommendedJob{
+			JobId:     j.Job.ID.String(),
+			Title:     j.Job.Title,
+			Level:     j.Job.Level,
+			Location:  j.Job.Location,
+			SalaryMin: toInt32(j.Job.SalaryMin),
+			SalaryMax: toInt32(j.Job.SalaryMax),
+			Score:     j.Score,
+			Breakdown: &candidatev1.MatchBreakdown{
+				SemanticSimilarity:    b.SemanticSimilarity,
+				RequiredSkillCoverage: b.RequiredSkillCoverage,
+				ExperienceFit:         b.ExperienceFit,
+				LocationFit:           b.LocationFit,
+				MatchedSkills:         b.MatchedSkills,
+				MissingSkills:         b.MissingSkills,
+			},
+		}
+	}
+	return out
+}

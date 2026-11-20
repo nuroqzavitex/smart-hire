@@ -23,9 +23,11 @@ import (
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
 	"github.com/nuroqzavitex/smarthire/pkg/otel"
 	"github.com/nuroqzavitex/smarthire/pkg/outbox"
+	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/aiclient"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/consumer"
 	candgrpc "github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/grpc"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/httpx"
+	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/jobclient"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/postgres"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/schema"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/storage"
@@ -112,16 +114,30 @@ func Run(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 
+	// Lazy connections: AI or job being down only fails recommendations.
+	aiConn, err := grpcx.Dial(cfg.AIAddr)
+	if err != nil {
+		return fmt.Errorf("dial ai: %w", err)
+	}
+	defer func() { _ = aiConn.Close() }()
+	jobConn, err := grpcx.Dial(cfg.JobAddr)
+	if err != nil {
+		return fmt.Errorf("dial job: %w", err)
+	}
+	defer func() { _ = jobConn.Close() }()
+
 	svc := app.NewService(app.Deps{
-		Candidates: postgres.NewCandidateRepo(pool),
-		CVs:        postgres.NewCVRepo(pool),
-		Storage:    store,
-		Outbox:     postgres.NewOutboxWriter(pool),
-		Idem:       postgres.NewIdempotency(pool),
-		Tx:         postgres.NewTxManager(pool),
-		Schema:     schema.Validator{},
-		UploadTTL:  cfg.UploadURLTTL,
-		Logger:     log,
+		Candidates:   postgres.NewCandidateRepo(pool),
+		CVs:          postgres.NewCVRepo(pool),
+		Storage:      store,
+		Outbox:       postgres.NewOutboxWriter(pool),
+		Idem:         postgres.NewIdempotency(pool),
+		Tx:           postgres.NewTxManager(pool),
+		Schema:       schema.Validator{},
+		UploadTTL:    cfg.UploadURLTTL,
+		Logger:       log,
+		Recommender:  aiclient.New(aiConn, cfg.AIBreakerFailures, cfg.AIBreakerOpen, cfg.AITimeout),
+		JobDirectory: jobclient.New(jobConn, cfg.JobTimeout),
 	})
 
 	results, err := kafka.NewConsumer(kafka.ConsumerConfig{

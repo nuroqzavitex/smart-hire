@@ -25,6 +25,7 @@ type UseCases interface {
 	ListMyCVs(ctx context.Context, pr app.PageRequest) (app.Page, error)
 	UpdateParsedData(ctx context.Context, id uuid.UUID, p domain.ParsedCV) (domain.CV, error)
 	ReparseCV(ctx context.Context, id uuid.UUID) (domain.CV, error)
+	ListRecommendedJobs(ctx context.Context, cvID uuid.UUID, topK int) (app.RecommendedJobs, error)
 }
 
 // Handler implements candidatev1.CandidateServiceServer.
@@ -122,4 +123,17 @@ func (h *Handler) cv(ctx context.Context, rawID string,
 		return nil, err
 	}
 	return cvToProto(cv)
+}
+
+// ListRecommendedJobs ranks open jobs for one of the caller's parsed CVs.
+func (h *Handler) ListRecommendedJobs(ctx context.Context, req *candidatev1.ListRecommendedJobsRequest) (*candidatev1.ListRecommendedJobsResponse, error) {
+	id, err := parseID(req.GetId())
+	if err != nil {
+		return nil, err
+	}
+	recs, err := h.uc.ListRecommendedJobs(ctx, id, int(req.GetTopK()))
+	if err != nil {
+		return nil, err
+	}
+	return recommendationsToProto(recs), nil
 }

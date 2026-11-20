@@ -33,6 +33,15 @@ type Config struct {
 	S3UseSSL         bool          `env:"S3_USE_SSL" envDefault:"false"`
 	UploadURLTTL     time.Duration `env:"UPLOAD_URL_TTL" envDefault:"10m"`
 	LogLevel         string        `env:"LOG_LEVEL" envDefault:"info"`
+
+	// Job recommendations (ADR 0010): the AI service ranks, the job service
+	// supplies job details. Either being down only fails that endpoint (503).
+	AIAddr            string        `env:"AI_ADDR" envDefault:"ai-api:9100"`
+	AITimeout         time.Duration `env:"AI_TIMEOUT" envDefault:"2s"`
+	AIBreakerFailures uint32        `env:"AI_BREAKER_FAILURES" envDefault:"5"`
+	AIBreakerOpen     time.Duration `env:"AI_BREAKER_OPEN" envDefault:"30s"`
+	JobAddr           string        `env:"JOB_ADDR" envDefault:"job:9002"`
+	JobTimeout        time.Duration `env:"JOB_TIMEOUT" envDefault:"2s"`
 }
 
 // Load reads the server configuration from CANDIDATE_* variables.

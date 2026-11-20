@@ -18,6 +18,18 @@ func setRequired(t *testing.T) {
 	t.Setenv("CANDIDATE_S3_SECRET_KEY", "sk")
 }
 
+func TestLoad_MatchingDefaults(t *testing.T) {
+	setRequired(t)
+	c, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, "ai-api:9100", c.AIAddr)
+	assert.Equal(t, "job:9002", c.JobAddr)
+	assert.Equal(t, 2*time.Second, c.AITimeout)
+	assert.Equal(t, 2*time.Second, c.JobTimeout)
+	assert.Equal(t, uint32(5), c.AIBreakerFailures)
+	assert.Equal(t, 30*time.Second, c.AIBreakerOpen)
+}
+
 func TestLoad_Defaults(t *testing.T) {
 	setRequired(t)
 	c, err := config.Load()

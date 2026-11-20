@@ -29,6 +29,10 @@ type Deps struct {
 	NewAttemptID func() string
 	UploadTTL    time.Duration
 	Logger       *slog.Logger
+	// Recommender (AI service) and JobDirectory (job service) back
+	// ListRecommendedJobs; nil means matching is unavailable (ADR 0010).
+	Recommender  Recommender
+	JobDirectory JobDirectory
 }
 
 // Service implements the candidate use cases.
