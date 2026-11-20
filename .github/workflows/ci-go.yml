@@ -39,6 +39,7 @@ jobs:
               - 'services/gateway/**'
             job:
               - 'services/job/**'
+              - 'deploy/docker/opensearch/**'
             candidate:
               - 'services/candidate/**'
               - 'deploy/docker/minio/**'
@@ -90,9 +91,10 @@ jobs:
       - name: Unit tests
         working-directory: ${{ matrix.module }}
         run: go test -race ./...
-      # Candidate integration tests run the locally built MinIO image (ADR 0008, E-R4).
+      # Candidate integration tests run the locally built MinIO image (ADR 0008,
+      # E-R4); job integration tests run OpenSearch + analysis-icu (ADR 0009).
       - uses: docker/setup-buildx-action@v3
-        if: matrix.module == 'services/candidate'
+        if: matrix.module == 'services/candidate' || matrix.module == 'services/job'
       - name: Build MinIO test image
         if: matrix.module == 'services/candidate'
         uses: docker/build-push-action@v6
@@ -103,6 +105,16 @@ jobs:
           tags: smarthire/minio:RELEASE.2025-04-22T22-12-26Z
           cache-from: type=gha,scope=minio
           cache-to: type=gha,mode=max,scope=minio
+      - name: Build OpenSearch test image
+        if: matrix.module == 'services/job'
+        uses: docker/build-push-action@v6
+        with:
+          context: deploy/docker/opensearch
+          load: true
+          push: false
+          tags: smarthire/opensearch:2.19.2-icu
+          cache-from: type=gha,scope=opensearch
+          cache-to: type=gha,mode=max,scope=opensearch
       - name: Integration tests
         if: startsWith(matrix.module, 'services/') || matrix.module == 'pkg'
         working-directory: ${{ matrix.module }}

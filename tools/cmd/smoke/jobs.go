@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 )
@@ -72,10 +73,18 @@ func decodeJob(r response) (smokeJob, error) {
 
 // createJob creates a draft job and returns its id.
 func (s *smoke) createJob(access, title string) (string, error) {
+	return s.createJobWith(access, title,
+		"Phát triển dịch vụ backend bằng Go và PostgreSQL cho nền tảng tuyển dụng.",
+		[]string{"Go", "PostgreSQL"})
+}
+
+// createJobWith creates a draft job in Hà Nội with the given description and
+// required skills, and returns its id.
+func (s *smoke) createJobWith(access, title, description string, skills []string) (string, error) {
 	r, err := s.do(http.MethodPost, "/v1/jobs", map[string]any{
 		"title":           title,
-		"description":     "Phát triển dịch vụ backend bằng Go và PostgreSQL cho nền tảng tuyển dụng.",
-		"required_skills": []string{"Go", "PostgreSQL"},
+		"description":     description,
+		"required_skills": skills,
 		"level":           "JOB_LEVEL_SENIOR",
 		"location":        "Hà Nội",
 	}, bearer(access))
@@ -120,34 +129,74 @@ func (s *smoke) transitionJob(access, id, action, wantStatus string) error {
 	return nil
 }
 
-// searchExpect runs the anonymous public search and checks whether id is in
-// the results.
-func (s *smoke) searchExpect(q, id string, want bool) error {
-	if id == "" {
-		return errors.New("no job id")
-	}
-	r, err := s.do(http.MethodGet, "/v1/jobs?"+url.Values{"q": {q}}.Encode(), nil, nil)
-	if err != nil {
-		return err
-	}
-	if err := expectStatus(r, http.StatusOK); err != nil {
-		return err
-	}
-	var out struct {
-		Jobs []smokeJob `json:"jobs"`
-	}
-	if err := json.Unmarshal(r.body, &out); err != nil {
-		return fmt.Errorf("decode list: %w", err)
-	}
-	found := false
-	for _, j := range out.Jobs {
+// searchWait bounds how long the smoke waits for the eventually consistent
+// search read model (spec: a new job appears after ~1-2s, ADR 0009).
+const searchWait = 15 * time.Second
+
+// searchResult is the subset of ListJobsResponse the smoke test reads.
+type searchResult struct {
+	Jobs     []smokeJob `json:"jobs"`
+	Degraded bool       `json:"degraded"`
+	Facets   struct {
+		Skills []struct {
+			Value string `json:"value"`
+			Count string `json:"count"` // int64 is a JSON string in protojson
+		} `json:"skills"`
+	} `json:"facets"`
+}
+
+func (r searchResult) has(id string) bool {
+	for _, j := range r.Jobs {
 		if j.ID == id {
-			found = true
-			break
+			return true
 		}
 	}
-	if found != want {
-		return fmt.Errorf("job %s in results = %v, want %v (%d results)", id, found, want, len(out.Jobs))
+	return false
+}
+
+// search runs the anonymous public search once.
+func (s *smoke) search(q string) (searchResult, error) {
+	r, err := s.do(http.MethodGet, "/v1/jobs?"+url.Values{"q": {q}}.Encode(), nil, nil)
+	if err != nil {
+		return searchResult{}, err
+	}
+	if err := expectStatus(r, http.StatusOK); err != nil {
+		return searchResult{}, err
+	}
+	var out searchResult
+	if err := json.Unmarshal(r.body, &out); err != nil {
+		return searchResult{}, fmt.Errorf("decode list: %w", err)
+	}
+	return out, nil
+}
+
+// searchExpect polls the public search until whether id is in the results
+// matches want, or searchWait passes.
+func (s *smoke) searchExpect(q, id string, want bool) error {
+	_, err := s.searchUntil(q, func(r searchResult) bool { return r.has(id) == want })
+	if err != nil {
+		return fmt.Errorf("job %s in results for %q never became %v: %w", id, q, want, err)
 	}
 	return nil
+}
+
+// searchUntil polls the public search until ok holds or searchWait passes.
+func (s *smoke) searchUntil(q string, ok func(searchResult) bool) (searchResult, error) {
+	if q == "" {
+		return searchResult{}, errors.New("empty query")
+	}
+	deadline := time.Now().Add(searchWait)
+	for {
+		r, err := s.search(q)
+		if err != nil {
+			return searchResult{}, err
+		}
+		if ok(r) {
+			return r, nil
+		}
+		if time.Now().After(deadline) {
+			return r, fmt.Errorf("timed out after %s (%d results, degraded=%v)", searchWait, len(r.Jobs), r.Degraded)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 }

@@ -154,8 +154,10 @@ search-rebuild:
 search-reconcile:
 	$(COMPOSE) run --rm job-projector reconcile
 
+# Ends with a read-model reconcile: open jobs in Postgres vs OpenSearch.
 smoke:
 	go run ./tools/cmd/smoke -base $(GATEWAY_URL) -origin $(SMOKE_ORIGIN) -kafka $(KAFKA_ADDR)
+	$(COMPOSE) run --rm job-projector reconcile
 
 logs:
 	$(COMPOSE) logs -f --tail=100

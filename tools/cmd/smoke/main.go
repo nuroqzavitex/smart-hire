@@ -111,6 +111,7 @@ func (s *smoke) run() error {
 		{"login logout refresh", s.loginLogoutRefresh},
 	}
 	steps = append(steps, s.jobSteps()...)
+	steps = append(steps, s.searchSteps()...)
 	steps = append(steps, s.cvSteps()...)
 	for _, st := range steps {
 		if err := step(st.name, st.fn); err != nil {
