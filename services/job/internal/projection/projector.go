@@ -38,8 +38,19 @@ type Projector struct {
 	// (a rebuild finished); the alias is then re-resolved and the write
 	// retried once.
 	IndexGone func(error) bool
-	Now       func() time.Time
-	Log       *slog.Logger
+	// Transient reports whether a store error is an infrastructure failure
+	// (OpenSearch down, 5xx, 429). Those are retried here with capped
+	// backoff until they succeed or ctx ends, blocking the partition rather
+	// than dead-lettering events and leaving holes in the read model. Other
+	// store errors go to the DLQ. Nil keeps the pkg/kafka retry/DLQ behaviour.
+	Transient func(error) bool
+	// RetryBase and RetryMax bound the backoff between transient retries.
+	RetryBase, RetryMax time.Duration
+	// CallTimeout bounds each store call, so a hung OpenSearch does not
+	// block forever (0 = no extra bound).
+	CallTimeout time.Duration
+	Now         func() time.Time
+	Log         *slog.Logger
 
 	mu        sync.Mutex
 	indices   []string
@@ -62,12 +73,61 @@ func (p *Projector) Handle(ctx context.Context, env event.Envelope, _ *kgo.Recor
 	if err != nil {
 		return err
 	}
-	err = p.apply(ctx, d)
-	if err != nil && p.IndexGone != nil && p.IndexGone(err) {
+	reresolved := false
+	for attempt := 1; ; attempt++ {
+		err := p.apply(ctx, d)
+		if err == nil {
+			return nil
+		}
+		if !reresolved && p.IndexGone != nil && p.IndexGone(err) {
+			reresolved = true
+			p.invalidate()
+			continue
+		}
+		if p.Transient == nil {
+			return err
+		}
+		if ctx.Err() != nil {
+			return ctx.Err() // shutdown: pkg/kafka neither commits nor dead-letters
+		}
+		if !p.Transient(err) {
+			p.logger().Error("job document rejected by read model", "job_id", d.JobID, "version", d.Version, "error", err.Error())
+			return errRejected
+		}
+		wait := p.backoff(attempt)
+		p.logger().Warn("read model unavailable, retrying", "job_id", d.JobID, "attempt", attempt, "retry_in", wait.String(), "error", err.Error())
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
 		p.invalidate()
-		err = p.apply(ctx, d)
 	}
-	return err
+}
+
+var errRejected = kafka.Permanent(errors.New("job document rejected by read model"))
+
+func (p *Projector) backoff(attempt int) time.Duration {
+	base, ceiling := p.RetryBase, p.RetryMax
+	if base <= 0 {
+		base = 200 * time.Millisecond
+	}
+	if ceiling <= 0 {
+		ceiling = 10 * time.Second
+	}
+	d := base
+	for i := 1; i < attempt && d < ceiling; i++ {
+		d *= 2
+	}
+	return min(d, ceiling)
+}
+
+// callCtx bounds one store call by CallTimeout.
+func (p *Projector) callCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	if p.CallTimeout <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, p.CallTimeout)
 }
 
 // apply writes d to every index behind the (cached) write alias.
@@ -77,7 +137,9 @@ func (p *Projector) apply(ctx context.Context, d Document) error {
 		return fmt.Errorf("resolve write alias: %w", err)
 	}
 	for _, idx := range indices {
-		applied, err := p.Store.Put(ctx, idx, d)
+		cctx, cancel := p.callCtx(ctx)
+		applied, err := p.Store.Put(cctx, idx, d)
+		cancel()
 		if err != nil {
 			return fmt.Errorf("index job document: %w", err)
 		}
@@ -101,7 +163,9 @@ func (p *Projector) writeIndices(ctx context.Context) ([]string, error) {
 	if p.indices != nil && now.Before(p.expiresAt) {
 		return p.indices, nil
 	}
-	indices, err := p.Store.WriteIndices(ctx)
+	cctx, cancel := p.callCtx(ctx)
+	defer cancel()
+	indices, err := p.Store.WriteIndices(cctx)
 	if err != nil {
 		return nil, err
 	}

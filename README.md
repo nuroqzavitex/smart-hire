@@ -4,7 +4,7 @@ SmartHire là nền tảng tuyển dụng (phân tích CV, so khớp CV với JD
 
 ## Kiến trúc mục tiêu
 
-Sơ đồ dưới là kiến trúc đích (spec.md §4). Phần **đã có (M0 + M1a + M1b)** được tô xanh: API Gateway, Auth Service, Job Service, Candidate Service, AI Service (Python, chỉ parse CV), Postgres `auth_db`, `job_db`, `candidate_db` và `ai_db`, Redis, Kafka (Redpanda), MinIO. Các thành phần còn lại (Application, Notification, OpenSearch, Qdrant, Web App) thuộc các milestone sau.
+Sơ đồ dưới là kiến trúc đích (spec.md §4). Phần **đã có (M0 + M1a + M1b + M2a)** được tô xanh: API Gateway, Auth Service, Job Service (kèm projector), Candidate Service, AI Service (Python, chỉ parse CV), Postgres `auth_db`, `job_db`, `candidate_db` và `ai_db`, OpenSearch (read model tìm kiếm JD), Redis, Kafka (Redpanda), MinIO. Các thành phần còn lại (Application, Notification, Qdrant, Web App) thuộc các milestone sau.
 
 ```mermaid
 flowchart LR
@@ -44,12 +44,14 @@ flowchart LR
     K -. user.deleted .-> AUTH
 
     classDef m0 fill:#d3f9d8,stroke:#2f9e44,color:#000;
-    class GW,AUTH,PGA,RD,JOB,PGJ,K,CAND,AI,S3,PGC,PGAI m0;
+    class GW,AUTH,PGA,RD,JOB,PGJ,OS,K,CAND,AI,S3,PGC,PGAI m0;
 ```
 
 Từ M1a, Auth và Job **ghi** sự kiện (`user.registered`, `job.created|updated|closed|deleted`) vào bảng `outbox` trong cùng transaction với dữ liệu nghiệp vụ; một relay chạy trong process của mỗi service (poll `FOR UPDATE SKIP LOCKED`, at-least-once) đẩy chúng sang Kafka (Redpanda), kèm carrier W3C trong cột `headers` để trace đi tiếp qua Kafka. Consumer retry trong process rồi chuyển vào `<topic>.dlq`. Xem [ADR 0005](docs/adr/0005-outbox-relay-headers.md) và [ADR 0006](docs/adr/0006-kafka-client-retry-dlq.md).
 
 Từ M1b, ứng viên upload CV (PDF) thẳng lên MinIO bằng presigned URL ([ADR 0008](docs/adr/0008-presigned-upload-valet-key.md)); Candidate ghi `cv.uploaded` vào outbox, AI service (Python, [ADR 0007](docs/adr/0007-ai-service-python-llm-port.md)) tải PDF, trích văn bản, parse bằng LLM rồi phát `cv.parsed` / `cv.parse_failed` qua outbox riêng; Candidate consume kết quả (idempotent, bỏ qua kết quả của `attempt_id` cũ). Trace đi liền Go → Kafka → Python → Kafka → Go. Mặc định LLM là parser quy tắc giả lập (không cần API key); xem mục Quick start để bật Claude thật.
+
+Từ M2a, tìm kiếm JD theo CQRS ([ADR 0009](docs/adr/0009-cqrs-job-search-read-model.md)): `job-projector` consume `job.*` và ghi vào OpenSearch (tiếng Việt không dấu, đồng nghĩa kỹ năng, facet) bằng external version + tombstone, nên event trùng, sai thứ tự hay đến muộn sau khi xoá đều không làm hỏng read model. `GET /v1/jobs` đọc OpenSearch qua circuit breaker; OpenSearch lỗi thì quay về Postgres `tsvector` và trả `degraded: true`. `make search-rebuild` dựng lại index từ Postgres không gián đoạn (alias đọc/ghi tách riêng), `make search-reconcile` so số JD đang mở giữa hai bên.
 
 ## Quick start
 
@@ -57,9 +59,9 @@ Yêu cầu: Go (bản stable mới nhất), `make`, `curl`, Docker với Compose
 
 ```bash
 make bootstrap            # cài buf, golangci-lint, migrate; sinh khoá JWT dev; tạo .env từ .env.example
-make infra-up obs-up up   # Postgres + Redis + Redpanda (+ Console, tạo topic) + MinIO (build từ mã nguồn, tạo bucket/user); OTel Collector + Tempo + Grafana; auth + job + candidate + ai + gateway
+make infra-up obs-up up   # Postgres + Redis + Redpanda (+ Console, tạo topic) + MinIO (build từ mã nguồn, tạo bucket/user) + OpenSearch (kèm analysis-icu); OTel Collector + Tempo + Grafana; auth + job + job-projector + candidate + ai + gateway
 make seed                 # tạo admin và user mẫu (dịch vụ auth-seed)
-make smoke                # luồng auth (register → login → /v1/me → refresh → reuse → logout) rồi luồng recruiter tạo/đăng/đóng job, rồi luồng CV (profile → upload-url → PUT PDF → complete → `PARSED` → sửa dữ liệu parse → từ chối file không phải PDF), kiểm tra sự kiện trên Kafka
+make smoke                # luồng auth (register → login → /v1/me → refresh → reuse → logout) rồi luồng recruiter tạo/đăng/đóng job, rồi tìm kiếm qua OpenSearch (không dấu, đồng nghĩa, facet, JD đóng biến mất), rồi luồng CV (profile → upload-url → PUT PDF → complete → `PARSED` → sửa dữ liệu parse → từ chối file không phải PDF), kiểm tra sự kiện trên Kafka; cuối cùng đối soát read model
 make down                 # dừng stack
 ```
 
@@ -73,11 +75,13 @@ Sau `make seed` có ba tài khoản: admin (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PAS
 
 **MinIO:** image `minio/minio` và `minio/mc` chính thức đã bị gỡ khỏi Docker Hub, nên MinIO và `mc` được build từ mã nguồn GitHub chính thức ở tag cố định (`make minio-image`, tự chạy trong `make infra-up`; lần đầu cần truy cập `github.com` và mất vài phút). Xem [ADR 0008](docs/adr/0008-presigned-upload-valet-key.md).
 
+**Nâng từ M1b:** M2a thêm OpenSearch (`make infra-up` tự build image) và `job-projector`; không cần `down-v`. Nếu index lệch (ví dụ event cũ đã vào DLQ), chạy `make search-rebuild`.
+
 **Bật Claude thật cho AI parse:** mặc định `AI_LLM_PROVIDER=fake` (parser quy tắc, xác định). Để dùng Claude, đặt `AI_LLM_PROVIDER=anthropic` và `ANTHROPIC_API_KEY=...` trong `.env` rồi `make up`; thiếu credential thì worker thoát khi khởi động. Không bao giờ commit `.env`.
 
 **Mã trả về của OpenAPI:** `POST /v1/jobs` (CreateJob) và `POST /v1/auth/register` thực tế trả **201**, trong khi `contracts/openapi/gateway.yaml` (sinh từ proto) ghi 200. `openapimerge` chỉ hợp nhất path/method và báo lỗi khi trùng, không ghi đè được response của operation sinh ra, nên sai lệch này được ghi nhận ở đây thay vì vá trong `gateway.handwritten.yaml`.
 
-Lệnh khác: `make test` (unit, không cần Docker), `make test-int` (integration, cần Docker), `make cover-auth` / `make cover-job` / `make cover-candidate` (coverage domain + app, ngưỡng 70%), `make ai-sync ai-lint ai-test ai-test-int ai-cover` (service Python AI, cần Docker cho `ai-test-int` và `ai-cover`), `make lint`, `make proto` (buf generate trên `buf.lock` đã commit, rồi gộp OpenAPI), `make proto-deps` (chủ động nâng deps buf, ghi lại `buf.lock`), `make sqlc` (chạy sqlc qua Docker), `make migrate`, `make logs`.
+Lệnh khác: `make test` (unit, không cần Docker), `make test-int` (integration, cần Docker), `make cover-auth` / `make cover-job` / `make cover-candidate` (coverage domain + app, ngưỡng 70%), `make ai-sync ai-lint ai-test ai-test-int ai-cover` (service Python AI, cần Docker cho `ai-test-int` và `ai-cover`), `make search-rebuild` / `make search-reconcile` (read model tìm kiếm JD), `make lint`, `make proto` (buf generate trên `buf.lock` đã commit, rồi gộp OpenAPI), `make proto-deps` (chủ động nâng deps buf, ghi lại `buf.lock`), `make sqlc` (chạy sqlc qua Docker), `make migrate`, `make logs`.
 
 ## URL local
 
@@ -97,6 +101,8 @@ Mọi cổng publish ra host đều bind vào `127.0.0.1`.
 | AI API | `8100` | chỉ trong mạng Compose (`ai-api:8100`: `/healthz`, `/readyz`, `/metrics`), không publish ra host |
 | MinIO S3 API | http://127.0.0.1:9000 | nơi client PUT CV bằng presigned URL |
 | MinIO Console | http://127.0.0.1:9001 | đăng nhập bằng `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` trong `.env` |
+| OpenSearch | http://127.0.0.1:9200 | read model tìm kiếm JD (alias `jobs` / `jobs_write`), security plugin tắt (chỉ dev) |
+| Job projector HTTP | `8012` | chỉ trong mạng Compose (`/healthz`, `/readyz`) |
 
 Xem trace của một request: gọi `GET /v1/me`, mở Grafana → Explore → Tempo, tìm theo service `gateway`.
 
@@ -107,7 +113,8 @@ Xem trace của một request: gọi `GET /v1/me`, mở Grafana → Explore → 
 | M0 | Nền móng + Auth + Gateway: register/login/refresh/logout qua Gateway, có trace | ✅ |
 | M1a | Nền sự kiện (`pkg/kafka`, `pkg/outbox`, `pkg/idempotency`, DLQ, Redpanda) + Job Service (tìm kiếm Postgres full-text) | ✅ |
 | M1b | Candidate + AI parse (upload CV presigned, AI service Python, `cv.*` events) | ✅ |
-| M2 | Matching (embedding, Qdrant) + CQRS tìm kiếm JD (OpenSearch) | Chưa bắt đầu |
+| M2a | CQRS tìm kiếm JD: read model OpenSearch + projector, rebuild/reconcile, circuit breaker + fallback Postgres | ✅ |
+| M2b | Matching (embedding, Qdrant, chấm điểm CV ↔ JD) | Chưa bắt đầu |
 | M3 | Application + Saga (orchestration) + resilience | Chưa bắt đầu |
 | M4 | Notification + observability đầy đủ + saga xoá tài khoản (choreography) | Chưa bắt đầu |
 | M5 | Frontend tối giản + E2E + k6 + video demo | Chưa bắt đầu |
@@ -125,7 +132,9 @@ Xem trace của một request: gọi `GET /v1/me`, mở Grafana → Explore → 
   - [0006 — Kafka client (franz-go) + retry in-process + DLQ](docs/adr/0006-kafka-client-retry-dlq.md)
   - [0007 — AI service bằng Python + cổng `LlmParser`](docs/adr/0007-ai-service-python-llm-port.md)
   - [0008 — Upload CV bằng presigned URL (valet key) + MinIO](docs/adr/0008-presigned-upload-valet-key.md)
+  - [0009 — CQRS cho tìm kiếm JD — read model OpenSearch + projector](docs/adr/0009-cqrs-job-search-read-model.md)
 - Thiết kế M0: [`docs/superpowers/specs/2026-11-08-m0-foundation-auth-gateway-design.md`](docs/superpowers/specs/2026-11-08-m0-foundation-auth-gateway-design.md)
 - Thiết kế M1a: [`docs/superpowers/specs/2026-11-10-m1a-events-job-design.md`](docs/superpowers/specs/2026-11-10-m1a-events-job-design.md); plan: [`docs/superpowers/plans/2026-11-10-m1a-events-job.md`](docs/superpowers/plans/2026-11-10-m1a-events-job.md)
 - Thiết kế M1b: [`docs/superpowers/specs/2026-11-11-m1b-candidate-ai-parse-design.md`](docs/superpowers/specs/2026-11-11-m1b-candidate-ai-parse-design.md); plan: [`docs/superpowers/plans/2026-11-11-m1b-candidate-ai.md`](docs/superpowers/plans/2026-11-11-m1b-candidate-ai.md)
+- Thiết kế M2a: [`docs/superpowers/specs/2026-11-20-m2a-cqrs-job-search-design.md`](docs/superpowers/specs/2026-11-20-m2a-cqrs-job-search-design.md); plan: [`docs/superpowers/plans/2026-11-20-m2a-cqrs-job-search.md`](docs/superpowers/plans/2026-11-20-m2a-cqrs-job-search.md)
 - OpenAPI của Gateway: [`contracts/openapi/gateway.yaml`](contracts/openapi/gateway.yaml)

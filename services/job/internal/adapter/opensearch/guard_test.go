@@ -73,3 +73,32 @@ func TestGuarded_Timeout(t *testing.T) {
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Less(t, time.Since(start), time.Second)
 }
+
+func TestGuarded_CallerCancellationDoesNotTrip(t *testing.T) {
+	var calls atomic.Int32
+	inner := backendFunc(func(context.Context, app.SearchQuery) (app.SearchResult, error) {
+		calls.Add(1)
+		return app.SearchResult{}, context.Canceled
+	})
+	g := opensearch.NewGuarded(inner, 2, time.Minute, time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for i := 0; i < 5; i++ {
+		_, _ = g.Search(ctx, app.SearchQuery{})
+	}
+	assert.Equal(t, int32(5), calls.Load(), "client disconnects are not opensearch failures")
+}
+
+func TestGuarded_OwnTimeoutStillTrips(t *testing.T) {
+	var calls atomic.Int32
+	inner := backendFunc(func(ctx context.Context, _ app.SearchQuery) (app.SearchResult, error) {
+		calls.Add(1)
+		<-ctx.Done()
+		return app.SearchResult{}, ctx.Err()
+	})
+	g := opensearch.NewGuarded(inner, 2, time.Minute, 20*time.Millisecond)
+	for i := 0; i < 4; i++ {
+		_, _ = g.Search(context.Background(), app.SearchQuery{})
+	}
+	assert.Equal(t, int32(2), calls.Load(), "a slow opensearch opens the breaker")
+}

@@ -87,6 +87,10 @@ func (s *Service) ListOpen(ctx context.Context, f SearchFilter, pr PageRequest) 
 		if err == nil || errors.Is(err, apperr.ErrValidation) {
 			return page, err
 		}
+		// The client went away: there is nobody to serve a fallback to.
+		if ctx.Err() != nil {
+			return Page{}, ctx.Err()
+		}
 		s.Logger.WarnContext(ctx, "job search read model failed, using postgres", "error_type", fmt.Sprintf("%T", err))
 		page, err = s.listFromPostgres(ctx, f, size, tok)
 		page.Degraded = true

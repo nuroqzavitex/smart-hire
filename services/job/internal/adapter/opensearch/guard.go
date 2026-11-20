@@ -2,6 +2,7 @@ package opensearch
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/sony/gobreaker/v2"
@@ -25,15 +26,36 @@ func NewGuarded(inner app.SearchBackend, failures uint32, open, timeout time.Dur
 		MaxRequests: 1,
 		Timeout:     open,
 		ReadyToTrip: func(c gobreaker.Counts) bool { return c.ConsecutiveFailures >= failures },
+		// A caller that cancelled or ran out of its own time says nothing
+		// about OpenSearch; our own per-call timeout still counts.
+		IsSuccessful: func(err error) bool {
+			var gone *callerGone
+			return err == nil || errors.As(err, &gone)
+		},
 	})
 	return &Guarded{inner: inner, cb: cb, timeout: timeout}
 }
 
+// callerGone marks an error caused by the caller's context ending.
+type callerGone struct{ err error }
+
+func (e *callerGone) Error() string { return e.err.Error() }
+func (e *callerGone) Unwrap() error { return e.err }
+
 // Search implements app.SearchBackend.
 func (g *Guarded) Search(ctx context.Context, q app.SearchQuery) (app.SearchResult, error) {
-	return g.cb.Execute(func() (app.SearchResult, error) {
-		ctx, cancel := context.WithTimeout(ctx, g.timeout)
+	res, err := g.cb.Execute(func() (app.SearchResult, error) {
+		cctx, cancel := context.WithTimeout(ctx, g.timeout)
 		defer cancel()
-		return g.inner.Search(ctx, q)
+		res, err := g.inner.Search(cctx, q)
+		if err != nil && ctx.Err() != nil {
+			return res, &callerGone{err: err}
+		}
+		return res, err
 	})
+	var gone *callerGone
+	if errors.As(err, &gone) {
+		return res, gone.err
+	}
+	return res, err
 }

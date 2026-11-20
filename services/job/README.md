@@ -1,6 +1,13 @@
 # job service
 
-Job postings (JD) for recruiters: create, edit, publish, close, soft-delete, and public search over open jobs (Postgres full-text search with `unaccent`).
+Job postings (JD) for recruiters: create, edit, publish, close, soft-delete, and public search over open jobs. Since M2a public search reads an OpenSearch read model kept in step by the `job-projector` binary (CQRS, [ADR 0009](../../docs/adr/0009-cqrs-job-search-read-model.md)); the M1a Postgres full-text search (`unaccent`) is the circuit-breaker fallback.
+
+## Binaries
+
+| Binary | Compose service | Purpose |
+|--------|-----------------|---------|
+| `/server` (`cmd/server`) | `job` | gRPC API, outbox relay |
+| `/projector` (`cmd/projector`) | `job-projector` | consumes `job.*` into OpenSearch (group `job-projector`); `projector rebuild [--keep-old]` rebuilds the index from Postgres with zero downtime (`make search-rebuild`); `projector reconcile` compares open jobs, exit 2 on mismatch (`make search-reconcile`) |
 
 ## Ports
 
@@ -8,6 +15,7 @@ Job postings (JD) for recruiters: create, edit, publish, close, soft-delete, and
 |------|---------|
 | 9002 | gRPC (`smarthire.job.v1.JobService`, health) |
 | 8002 | HTTP, internal only: `/healthz`, `/readyz` |
+| 8012 | projector HTTP, internal only: `/healthz`, `/readyz` (ready once the index and aliases exist) |
 
 ## Environment (prefix `JOB_`)
 
@@ -22,6 +30,12 @@ Job postings (JD) for recruiters: create, edit, publish, close, soft-delete, and
 | `JOB_KAFKA_BROKERS` | `redpanda:9092` | comma separated |
 | `JOB_OUTBOX_INTERVAL` | `500ms` | outbox relay poll interval |
 | `JOB_LOG_LEVEL` | `info` | |
+| `JOB_OPENSEARCH_URL` | `http://opensearch:9200` | server + projector |
+| `JOB_SEARCH_TIMEOUT` | `2s` | per search call |
+| `JOB_SEARCH_BREAKER_FAILURES` | `5` | consecutive failures that open the breaker |
+| `JOB_SEARCH_BREAKER_OPEN` | `30s` | open time before one trial request |
+| `JOB_PROJECTOR_HTTP_PORT` | `8012` | projector |
+| `JOB_PROJECTOR_ALIAS_TTL` | `5s` | projector cache of the `jobs_write` alias; rebuild waits TTL + 2s twice |
 
 ## RPC and REST
 
@@ -33,12 +47,16 @@ Job postings (JD) for recruiters: create, edit, publish, close, soft-delete, and
 | `CloseJob` | `POST /v1/jobs/{id}:close` | owner |
 | `DeleteJob` | `DELETE /v1/jobs/{id}` | owner |
 | `GetJob` | `GET /v1/jobs/{id}` | public (open jobs); owner sees any state |
-| `ListJobs` | `GET /v1/jobs` | public |
+| `ListJobs` | `GET /v1/jobs` | public; OpenSearch read model with `facets`, `degraded: true` when served by the Postgres fallback |
 | `ListMyJobs` | `GET /v1/me/jobs` | recruiter |
 
 ## Events (outbox, relayed to Kafka)
 
-`job.created`, `job.updated`, `job.closed`, `job.deleted` (source `job-service`, key = `job_id`).
+`job.created`, `job.updated`, `job.closed`, `job.deleted` (source `job-service`, key = `job_id`). `job.created|updated` carry `published_at` since M2a (optional in the schema for older events).
+
+## Read model
+
+Index `jobs_v{n}` behind the read alias `jobs` and the write alias `jobs_write`. Every write uses `version_type=external` (409 = already applied); closed and deleted jobs stay as tombstones filtered out by `status=open`. Analyzer: `icu_tokenizer` + `icu_folding` + skill synonyms; image `smarthire/opensearch:2.19.2-icu` (`make opensearch-image`). Page tokens record which backend issued them; a token from the other backend restarts at page 1.
 
 ## Notes
 

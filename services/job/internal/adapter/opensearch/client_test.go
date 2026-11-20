@@ -3,6 +3,8 @@ package opensearch_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -48,4 +50,21 @@ func TestPut_ExternalVersionAndConflict(t *testing.T) {
 	status = http.StatusInternalServerError
 	_, err = c.Put(context.Background(), "jobs_v1", d)
 	assert.Error(t, err)
+}
+
+func TestTransient_Classification(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want bool
+	}{
+		{errors.New("dial tcp: connection refused"), true},
+		{context.DeadlineExceeded, true},
+		{&opensearch.Error{Op: "index document", Status: 503}, true},
+		{&opensearch.Error{Op: "index document", Status: 429}, true},
+		{&opensearch.Error{Op: "index document", Status: 404, Type: "index_not_found_exception"}, true},
+		{&opensearch.Error{Op: "index document", Status: 400, Type: "mapper_parsing_exception"}, false},
+		{fmt.Errorf("index job document: %w", &opensearch.Error{Status: 400}), false},
+	} {
+		assert.Equal(t, c.want, opensearch.Transient(c.err), "%v", c.err)
+	}
 }

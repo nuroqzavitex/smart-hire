@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 
@@ -67,8 +68,7 @@ func decodeSearchToken(s string) (searchToken, error) {
 	}
 	switch t.Backend {
 	case backendOpenSearch:
-		var after []json.RawMessage
-		if json.Unmarshal(t.After, &after) != nil || len(after) == 0 {
+		if !validSearchAfter(t.After, t.Text) {
 			return searchToken{}, errBadToken
 		}
 	case backendPostgres:
@@ -79,4 +79,45 @@ func decodeSearchToken(s string) (searchToken, error) {
 		return searchToken{}, errBadToken
 	}
 	return t, nil
+}
+
+// maxSortID bounds the job_id sort key in a token (a UUID is 36 chars).
+const maxSortID = 64
+
+// validSearchAfter checks the client-supplied search_after against the sort
+// keys ListOpen uses, so a crafted token is a 400 instead of an OpenSearch
+// error that would count against the circuit breaker: [published_at, job_id]
+// without a text query, [_score, published_at, job_id] with one.
+func validSearchAfter(raw json.RawMessage, text bool) bool {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var keys []any
+	if dec.Decode(&keys) != nil {
+		return false
+	}
+	if text {
+		if len(keys) != 3 {
+			return false
+		}
+		score, ok := keys[0].(json.Number)
+		if !ok {
+			return false
+		}
+		if _, err := score.Float64(); err != nil {
+			return false
+		}
+		keys = keys[1:]
+	}
+	if len(keys) != 2 {
+		return false
+	}
+	at, ok := keys[0].(json.Number)
+	if !ok {
+		return false
+	}
+	if _, err := at.Int64(); err != nil {
+		return false
+	}
+	id, ok := keys[1].(string)
+	return ok && id != "" && len(id) <= maxSortID
 }

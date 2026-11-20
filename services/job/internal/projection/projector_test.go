@@ -211,3 +211,71 @@ func (g *goneStore) Put(ctx context.Context, index string, d projection.Document
 	}
 	return g.fakeStore.Put(ctx, index, d)
 }
+
+// flakyStore fails Put with err for the first n calls.
+type flakyStore struct {
+	*fakeStore
+	n   int
+	err error
+}
+
+func (f *flakyStore) Put(ctx context.Context, index string, d projection.Document) (bool, error) {
+	if f.n > 0 {
+		f.n--
+		return false, f.err
+	}
+	return f.fakeStore.Put(ctx, index, d)
+}
+
+func retrying(s projection.Store, transient bool) *projection.Projector {
+	p := newProjector(s, nil)
+	p.Transient = func(error) bool { return transient }
+	p.RetryBase, p.RetryMax = time.Millisecond, 4*time.Millisecond
+	return p
+}
+
+func TestHandle_RetriesInfrastructureErrorsUntilSuccess(t *testing.T) {
+	inner := newFakeStore("jobs_v1")
+	s := &flakyStore{fakeStore: inner, n: 6, err: errors.New("connection refused")}
+	err := retrying(s, true).Handle(context.Background(), envelope(t, "job.closed", map[string]any{"job_id": jobID, "version": 2}), nil)
+	require.NoError(t, err, "an opensearch outage blocks instead of dead-lettering")
+	assert.Len(t, inner.puts["jobs_v1"], 1)
+}
+
+func TestHandle_NonTransientStoreErrorIsPermanent(t *testing.T) {
+	s := &flakyStore{fakeStore: newFakeStore("jobs_v1"), n: 1, err: errors.New("mapper_parsing_exception: title=secret")}
+	err := retrying(s, false).Handle(context.Background(), envelope(t, "job.closed", map[string]any{"job_id": jobID, "version": 2}), nil)
+	require.Error(t, err)
+	assert.True(t, kafka.IsPermanent(err))
+	assert.NotContains(t, err.Error(), "secret")
+}
+
+func TestHandle_ShutdownStopsRetrying(t *testing.T) {
+	s := &flakyStore{fakeStore: newFakeStore("jobs_v1"), n: 1 << 30, err: errors.New("connection refused")}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err := retrying(s, true).Handle(ctx, envelope(t, "job.closed", map[string]any{"job_id": jobID, "version": 2}), nil)
+	require.Error(t, err)
+	assert.False(t, kafka.IsPermanent(err), "shutdown must not dead-letter")
+	assert.Less(t, time.Since(start), time.Second)
+}
+
+func TestHandle_StoreCallsHaveATimeout(t *testing.T) {
+	var deadline bool
+	s := &deadlineStore{fakeStore: newFakeStore("jobs_v1"), saw: &deadline}
+	p := newProjector(s, nil)
+	p.CallTimeout = time.Second
+	require.NoError(t, p.Handle(context.Background(), envelope(t, "job.closed", map[string]any{"job_id": jobID, "version": 2}), nil))
+	assert.True(t, deadline)
+}
+
+type deadlineStore struct {
+	*fakeStore
+	saw *bool
+}
+
+func (d *deadlineStore) Put(ctx context.Context, index string, doc projection.Document) (bool, error) {
+	_, *d.saw = ctx.Deadline()
+	return d.fakeStore.Put(ctx, index, doc)
+}

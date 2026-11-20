@@ -211,3 +211,15 @@ func (c *Client) Put(ctx context.Context, index string, d projection.Document) (
 // IndexGone reports whether err means the target index does not exist
 // (deleted by a finished rebuild); see projection.Projector.IndexGone.
 func IndexGone(err error) bool { return errorType(err) == "index_not_found_exception" }
+
+// Transient reports whether err is an infrastructure failure worth retrying
+// until OpenSearch recovers: transport errors (including timeouts), 5xx,
+// 429 and a missing index (an alias in flux). Other 4xx are a document or
+// mapping problem that retrying cannot fix.
+func Transient(err error) bool {
+	var e *Error
+	if !errors.As(err, &e) {
+		return true
+	}
+	return e.Status >= 500 || e.Status == http.StatusTooManyRequests || e.Type == "index_not_found_exception"
+}

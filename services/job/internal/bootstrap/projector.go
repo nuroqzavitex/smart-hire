@@ -29,6 +29,11 @@ const (
 	projectorName  = "job-projector"
 	projectorGroup = "job-projector"
 	ensureBackoff  = 2 * time.Second
+	// An OpenSearch outage blocks the partition (retried with this backoff)
+	// instead of dead-lettering events; each store call is bounded.
+	retryBase        = 200 * time.Millisecond
+	retryMax         = 10 * time.Second
+	storeCallTimeout = 10 * time.Second
 )
 
 // projectorTopics are the job events the read model follows.
@@ -92,7 +97,8 @@ func RunProjector(ctx context.Context, cfg config.ProjectorConfig) error {
 
 	p := &projection.Projector{
 		Store: client, Validate: eventschema.Validate, AliasTTL: cfg.AliasTTL,
-		IndexGone: opensearch.IndexGone, Log: log,
+		IndexGone: opensearch.IndexGone, Transient: opensearch.Transient,
+		RetryBase: retryBase, RetryMax: retryMax, CallTimeout: storeCallTimeout, Log: log,
 	}
 	consumer, err := kafka.NewConsumer(kafka.ConsumerConfig{
 		Brokers: cfg.KafkaBrokers, Group: projectorGroup, Topics: projectorTopics,

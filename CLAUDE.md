@@ -4,18 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-SmartHire is a recruiting platform (CV parsing, CV↔JD matching, application tracking) built as a **Backend-Go portfolio project**. Milestones **M0 (foundation + Auth + Gateway)**, **M1a (event backbone + Job service)** and **M1b (Candidate service + AI CV parsing)** are implemented:
+SmartHire is a recruiting platform (CV parsing, CV↔JD matching, application tracking) built as a **Backend-Go portfolio project**. Milestones **M0 (foundation + Auth + Gateway)**, **M1a (event backbone + Job service)**, **M1b (Candidate service + AI CV parsing)** and **M2a (CQRS job search on OpenSearch)** are implemented:
 
 - `pkg/` — shared libraries: `apperr`, `authz` (JWT/JWKS verifier, `authztest`), `config`, `event` (envelope + `event/eventschema` JSON-schema validator for `contracts/events`), `grpcx`, `idempotency` (`processed_events` de-duplication), `kafka` (franz-go producer/consumer, retry, DLQ), `logger`, `outbox` (writer + relay), `otel`.
 - `gen/go/` — generated protobuf/gRPC/grpc-gateway code (from `contracts/proto`).
 - `services/auth` — Auth service; **the template service** later Go services copy.
 - `services/gateway` — HTTP gateway (chi + grpc-gateway, rate limiting, cookie auth routes).
-- `services/job` — Job service (JD CRUD, publish/close/soft-delete, public search on Postgres `tsvector` + `unaccent`, outbox relay to Kafka); hexagonal like Auth.
+- `services/job` — Job service (JD CRUD, publish/close/soft-delete, outbox relay to Kafka); hexagonal like Auth. Since M2a public search (`ListJobs`) reads an OpenSearch read model through a circuit breaker (`internal/adapter/opensearch`, `sony/gobreaker`) and falls back to the M1a Postgres `tsvector` search (`degraded: true`). A second binary `cmd/projector` (compose `job-projector`) consumes `job.*` into OpenSearch (`internal/projection`: external versions, tombstones, read alias `jobs` / write alias `jobs_write`) and has `rebuild` / `reconcile` subcommands (ADR 0009).
 - `services/candidate` — Candidate service (profile, CV upload through a presigned MinIO URL, consumer of `cv.parsed|cv.parse_failed`, view/edit/reparse of the parsed CV); hexagonal like Auth.
 - `services/ai` — AI service in **Python 3.12** (uv): `ai-worker` (consumes `cv.uploaded`, PyMuPDF text, `LlmParser` port with `AnthropicLlmParser`/`FakeLlmParser`, own outbox + relay publishing `cv.parsed|cv.parse_failed`) and `ai-api` (health/metrics only).
 - `contracts/events` — JSON Schemas of the Kafka events (`user.registered`, `job.created|updated|closed|deleted`, `cv.uploaded`, `cv.parsed`, `cv.parse_failed`) plus shared fixtures in `testdata/` used by both the Go and Python tests.
 - `tools/cmd/` — `keygen`, `openapimerge`, `smoke`.
-- `deploy/docker` — Compose stack (Postgres, Redis, Redpanda + Console + `topics-init`, OTel collector, Tempo, Grafana, MinIO + `minio-init`, auth, job, candidate, ai-worker, ai-api, gateway); `.github/workflows` — CI.
+- `deploy/docker` — Compose stack (Postgres, Redis, Redpanda + Console + `topics-init`, OTel collector, Tempo, Grafana, MinIO + `minio-init`, OpenSearch, auth, job, job-projector, candidate, ai-worker, ai-api, gateway); `.github/workflows` — CI.
 
 Design documents:
 
@@ -24,7 +24,8 @@ Design documents:
 - `docs/superpowers/plans/2026-11-08-m0-foundation-auth-gateway.md` — task-by-task TDD implementation plan for M0 (Tasks 0–16), with exact interfaces, env vars, ports, and test names.
 - `docs/superpowers/specs/2026-11-10-m1a-events-job-design.md` — approved design for M1a (incl. §10 rulings); `docs/superpowers/plans/2026-11-10-m1a-events-job.md` — its TDD plan (Tasks 1–15).
 - `docs/superpowers/specs/2026-11-11-m1b-candidate-ai-parse-design.md` — approved design for M1b (incl. §10 rulings); `docs/superpowers/plans/2026-11-11-m1b-candidate-ai.md` — its TDD plan (Tasks 1–15).
-- `docs/adr/` — architecture decision records (0001–0004 from M0, 0005–0006 from M1a, 0007–0008 from M1b).
+- `docs/superpowers/specs/2026-11-20-m2a-cqrs-job-search-design.md` — approved design for M2a; `docs/superpowers/plans/2026-11-20-m2a-cqrs-job-search.md` — its plan (Tasks 1–8, executed inline).
+- `docs/adr/` — architecture decision records (0001–0004 from M0, 0005–0006 from M1a, 0007–0008 from M1b, 0009 from M2a).
 
 When extending M0 code, keep the names/signatures from the plan's **Interfaces** blocks. The user writes in Vietnamese; reply in Vietnamese.
 
@@ -32,7 +33,7 @@ When extending M0 code, keep the names/signatures from the plan's **Interfaces**
 
 "Depth over breadth": keep all 7 services from `spec.md` but invest in backend patterns (Outbox, idempotent consumers, Saga + recovery, circuit breaker/retry, DLQ, OTel tracing across Kafka and Go↔Python, testcontainers, k6, chaos). Frontend is minimal and deferred to M5 (no admin portal, i18n, dark mode, Tiptap). Demo runs on Docker Compose; K8s/Helm is optional (M6). Showcase = GitHub repo + video, not a live deployment.
 
-Milestones: M0 foundation+Auth+Gateway → M1a event backbone + Job (Kafka/Redpanda, outbox relay, job search on Postgres `tsvector`; done) → M1b Candidate + AI parse (MinIO presigned upload, Python AI worker, `cv.*` events; done) → M2 matching + CQRS job search (OpenSearch read model + projector; `tsvector` becomes the fallback) → M3 Application Saga (orchestration) + resilience → M4 Notification + full observability + account-deletion saga (choreography, `user.deleted`/`user.data_purged`) → M5 thin frontend + E2E + k6 → M6 Helm/K8s. `spec.md` §6.6 defines when a Saga is warranted vs. plain Outbox + idempotent consumer. Each milestone gets its own spec → plan → implementation cycle under `docs/superpowers/`.
+Milestones: M0 foundation+Auth+Gateway → M1a event backbone + Job (Kafka/Redpanda, outbox relay, job search on Postgres `tsvector`; done) → M1b Candidate + AI parse (MinIO presigned upload, Python AI worker, `cv.*` events; done) → M2a CQRS job search (OpenSearch read model + projector; `tsvector` is the fallback; done) → M2b matching (embedding, Qdrant, scoring) → M3 Application Saga (orchestration) + resilience → M4 Notification + full observability + account-deletion saga (choreography, `user.deleted`/`user.data_purged`) → M5 thin frontend + E2E + k6 → M6 Helm/K8s. `spec.md` §6.6 defines when a Saga is warranted vs. plain Outbox + idempotent consumer. Each milestone gets its own spec → plan → implementation cycle under `docs/superpowers/`.
 
 ## Architecture (target, per M0 design and spec.md)
 
@@ -60,6 +61,9 @@ make infra-up obs-up up        # postgres+redis+redpanda (+console, topics-init)
 make migrate | make seed       # run migrations | create admin + sample users (seed runs the auth-seed compose service)
 make smoke                     # end-to-end auth + job + CV flow through the gateway (CV is parsed by the fake LLM), plus user.registered/job.created/cv.uploaded on Kafka (tools/cmd/smoke)
 make minio-image               # build smarthire/minio:RELEASE.* from GitHub source (infra-up and the integration targets depend on it)
+make opensearch-image          # build smarthire/opensearch:2.19.2-icu (official image + analysis-icu; infra-up and test-int depend on it)
+make search-rebuild           # zero-downtime rebuild of the job read model from Postgres (job-projector rebuild)
+make search-reconcile         # compare open jobs in Postgres vs OpenSearch, exit 2 on mismatch (also run at the end of make smoke)
 make test                      # unit tests, no Docker needed
 make test-int                  # integration tests (build tag `integration`, testcontainers; needs Docker)
 make cover-auth                # auth domain+app coverage, must be ≥ 70%
@@ -83,7 +87,7 @@ go test -tags integration ./test/integration -run TestRefresh_ConcurrentSameToke
 MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd):/src" -w /src golang:1.27 bash -c 'for m in pkg services/auth services/job services/candidate services/gateway tools; do (cd $m && go test -race ./...) || exit 1; done'
 ```
 
-Local URLs (published to the host on 127.0.0.1 only): gateway `:8080`, Redpanda Console `:8081`, Kafka dev listener `:19092` (use `127.0.0.1:19092`; in-network brokers are `redpanda:9092`), Grafana `:3000`, Tempo `:3200`, OTel collector `:4317`. MinIO S3 `:9000` and console `:9001` (login with `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` from `.env`). Job gRPC `:9002` / HTTP `:8002`, Candidate gRPC `:9003` / HTTP `:8003` and AI api `:8100` are likewise compose-internal. Auth gRPC `:9001` and HTTP (JWKS/health) `:8001` are internal to the compose network (`auth:9001`, `auth:8001`), not reachable from the host.
+Local URLs (published to the host on 127.0.0.1 only): gateway `:8080`, Redpanda Console `:8081`, Kafka dev listener `:19092` (use `127.0.0.1:19092`; in-network brokers are `redpanda:9092`), Grafana `:3000`, Tempo `:3200`, OTel collector `:4317`. MinIO S3 `:9000` and console `:9001` (login with `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` from `.env`). OpenSearch `:9200` (security plugin off, dev only); the job projector HTTP `:8012` is compose-internal. Job gRPC `:9002` / HTTP `:8002`, Candidate gRPC `:9003` / HTTP `:8003` and AI api `:8100` are likewise compose-internal. Auth gRPC `:9001` and HTTP (JWKS/health) `:8001` are internal to the compose network (`auth:9001`, `auth:8001`), not reachable from the host.
 
 ## Conventions
 
@@ -91,4 +95,4 @@ Local URLs (published to the host on 127.0.0.1 only): gateway `:8080`, Redpanda 
 - SQL via `pgx/v5` + `sqlc` (no ORM); migrations with `golang-migrate`, append-only once merged.
 - Never log PII (email, password, tokens, CV content); `user_id` is fine.
 - Conventional Commits with service scope, e.g. `feat(auth): ...`.
-- Record significant architecture decisions as ADRs in `docs/adr/`, numbered in the order written (M0 owns 0001–0004, M1a owns 0005–0006, M1b owns 0007–0008); `spec.md` §10 lists planned ADR topics without numbers.
+- Record significant architecture decisions as ADRs in `docs/adr/`, numbered in the order written (M0 owns 0001–0004, M1a owns 0005–0006, M1b owns 0007–0008, M2a owns 0009); `spec.md` §10 lists planned ADR topics without numbers.

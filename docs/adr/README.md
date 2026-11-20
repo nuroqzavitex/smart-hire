@@ -16,6 +16,7 @@ Mỗi ADR ghi một quyết định kiến trúc theo khuôn: **Context / Decisi
 | [0006](0006-kafka-client-retry-dlq.md) | Kafka client (franz-go) + retry in-process + DLQ | M1a |
 | [0007](0007-ai-service-python-llm-port.md) | AI service bằng Python + cổng `LlmParser` | M1b |
 | [0008](0008-presigned-upload-valet-key.md) | Upload CV bằng presigned URL (valet key) + MinIO | M1b |
+| [0009](0009-cqrs-job-search-read-model.md) | CQRS cho tìm kiếm JD — read model OpenSearch + projector | M2a |
 
 ## Chủ đề dự kiến (chưa có số)
 
@@ -24,6 +25,5 @@ Các chủ đề trong `spec.md` §10, nhận số khi milestone tương ứng v
 - `grpc-for-sync`
 - `saga-orchestration`
 - `outbox-pattern`
-- `cqrs-job-search`
 - `account-deletion-choreography`
 - `when-not-to-use-saga`

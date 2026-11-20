@@ -88,10 +88,10 @@ services:
       # Job retries the JWKS fetch while auth starts.
       auth:
         condition: service_started
-      # Not required to start (ListJobs falls back to Postgres), but ordered
-      # so a fresh stack serves search from the read model.
+      # Ordering only: job must start even if OpenSearch never gets healthy,
+      # since ListJobs then falls back to Postgres (ADR 0009).
       opensearch:
-        condition: service_healthy
+        condition: service_started
     # Distroless image: no shell for a healthcheck. /readyz answers before
     # gRPC listens, so nothing gates on it: the gateway dials lazily and
     # `make up` waits until GET /v1/jobs succeeds end to end.
