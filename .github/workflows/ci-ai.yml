@@ -1,10 +1,10 @@
 name: ci-ai
 on:
   pull_request:
-    paths: ["services/ai/**", "contracts/events/**", "deploy/docker/minio/**", "deploy/docker/init/minio/**", ".github/workflows/ci-ai.yml"]
+    paths: ["services/ai/**", "contracts/events/**", "contracts/proto/smarthire/ai/**", "deploy/docker/minio/**", "deploy/docker/init/minio/**", ".github/workflows/ci-ai.yml"]
   push:
     branches: [main]
-    paths: ["services/ai/**", "contracts/events/**", "deploy/docker/minio/**", "deploy/docker/init/minio/**", ".github/workflows/ci-ai.yml"]
+    paths: ["services/ai/**", "contracts/events/**", "contracts/proto/smarthire/ai/**", "deploy/docker/minio/**", "deploy/docker/init/minio/**", ".github/workflows/ci-ai.yml"]
 permissions: { contents: read }
 concurrency: { group: "ci-ai-${{ github.ref }}", cancel-in-progress: true }
 jobs:
@@ -20,7 +20,8 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy src
-      # Integration tests use the locally built MinIO image (ADR 0008, E-R4).
+      # Integration tests use the locally built MinIO image (ADR 0008, E-R4);
+      # Qdrant (ADR 0010) is pulled by testcontainers.
       - uses: docker/setup-buildx-action@v4
       - name: Build MinIO test image
         uses: docker/build-push-action@v7

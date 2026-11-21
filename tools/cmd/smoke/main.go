@@ -113,6 +113,7 @@ func (s *smoke) run() error {
 	steps = append(steps, s.jobSteps()...)
 	steps = append(steps, s.searchSteps()...)
 	steps = append(steps, s.cvSteps()...)
+	steps = append(steps, s.matchingSteps()...)
 	for _, st := range steps {
 		if err := step(st.name, st.fn); err != nil {
 			return err

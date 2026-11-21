@@ -68,4 +68,4 @@ jobs:
       - name: Regenerate and fail on drift
         run: |
           make proto
-          git diff --exit-code gen contracts/openapi contracts/proto/buf.lock
+          git diff --exit-code gen contracts/openapi contracts/proto/buf.lock services/ai/src/smarthire

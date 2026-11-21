@@ -78,6 +78,7 @@ services:
       JOB_JWKS_URL: http://auth:8001/.well-known/jwks.json
       JOB_KAFKA_BROKERS: redpanda:9092
       JOB_OPENSEARCH_URL: http://opensearch:9200
+      JOB_AI_ADDR: ai-api:9100
       JOB_LOG_LEVEL: info
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
@@ -145,6 +146,8 @@ services:
       CANDIDATE_S3_ACCESS_KEY: ${CANDIDATE_S3_ACCESS_KEY:?set CANDIDATE_S3_ACCESS_KEY in .env}
       CANDIDATE_S3_SECRET_KEY: ${CANDIDATE_S3_SECRET_KEY:?set CANDIDATE_S3_SECRET_KEY in .env}
       CANDIDATE_LOG_LEVEL: info
+      CANDIDATE_AI_ADDR: ai-api:9100
+      CANDIDATE_JOB_ADDR: job:9002
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
       candidate-migrate:
