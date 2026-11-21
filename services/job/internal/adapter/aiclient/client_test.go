@@ -3,6 +3,7 @@ package aiclient_test
 import (
 	"context"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -21,20 +22,31 @@ import (
 	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/aiclient"
 )
 
+// fakeAI is shared by concurrent handlers (a cancelled call keeps running on
+// the server), so every field is synchronized.
 type fakeAI struct {
 	aiv1.UnimplementedAIServiceServer
 	calls atomic.Int32
 	err   error
-	delay time.Duration
+	delay atomic.Int64 // time.Duration
+	mu    sync.Mutex
 	last  *aiv1.FindCandidatesRequest
+}
+
+func (f *fakeAI) lastRequest() *aiv1.FindCandidatesRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.last
 }
 
 func (f *fakeAI) FindCandidates(ctx context.Context, req *aiv1.FindCandidatesRequest) (*aiv1.FindCandidatesResponse, error) {
 	f.calls.Add(1)
+	f.mu.Lock()
 	f.last = req
-	if f.delay > 0 {
+	f.mu.Unlock()
+	if d := time.Duration(f.delay.Load()); d > 0 {
 		select {
-		case <-time.After(f.delay):
+		case <-time.After(d):
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -70,8 +82,8 @@ func TestClient_MapsResponse(t *testing.T) {
 	job := uuid.New()
 	got, err := c.FindCandidates(context.Background(), job, 7)
 	require.NoError(t, err)
-	assert.Equal(t, job.String(), ai.last.GetJobId())
-	assert.Equal(t, int32(7), ai.last.GetTopK())
+	assert.Equal(t, job.String(), ai.lastRequest().GetJobId())
+	assert.Equal(t, int32(7), ai.lastRequest().GetTopK())
 	assert.Equal(t, "fake-hash@768", got.ModelVersion)
 	require.Len(t, got.Candidates, 1)
 	m := got.Candidates[0]
@@ -95,7 +107,8 @@ func TestClient_BreakerOpensAfterFailures(t *testing.T) {
 }
 
 func TestClient_TimeoutIsUnavailable(t *testing.T) {
-	ai := &fakeAI{delay: time.Second}
+	ai := &fakeAI{}
+	ai.delay.Store(int64(time.Second))
 	c := start(t, ai)
 	_, err := c.FindCandidates(context.Background(), uuid.New(), 0)
 	assert.ErrorIs(t, err, apperr.ErrUnavailable)
@@ -112,7 +125,8 @@ func TestClient_NotFoundDoesNotTrip(t *testing.T) {
 }
 
 func TestClient_CallerCancelDoesNotTrip(t *testing.T) {
-	ai := &fakeAI{delay: 100 * time.Millisecond}
+	ai := &fakeAI{}
+	ai.delay.Store(int64(100 * time.Millisecond))
 	c := start(t, ai)
 	for range 5 {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
@@ -120,7 +134,7 @@ func TestClient_CallerCancelDoesNotTrip(t *testing.T) {
 		cancel()
 		assert.Error(t, err)
 	}
-	ai.delay = 0
+	ai.delay.Store(0)
 	_, err := c.FindCandidates(context.Background(), uuid.New(), 0)
 	require.NoError(t, err, "breaker still closed")
 }
