@@ -95,3 +95,26 @@ def test_gemini_empty_input_no_call() -> None:
     models = _Models()
     assert GeminiEmbedder(_Client(models), "m").embed([]) == []
     assert models.calls == []
+
+
+@pytest.mark.parametrize(
+    ("code", "body"),
+    [
+        (401, {"error": {"message": "unauthenticated", "status": "UNAUTHENTICATED"}}),
+        (403, {"error": {"message": "permission denied", "status": "PERMISSION_DENIED"}}),
+        (
+            400,
+            {
+                "error": {
+                    "message": "API key not valid. Please pass a valid API key.",
+                    "status": "INVALID_ARGUMENT",
+                    "details": [{"reason": "API_KEY_INVALID"}],
+                }
+            },
+        ),
+    ],
+)
+def test_gemini_key_problems_are_transient(code: int, body: dict[str, Any]) -> None:
+    # A bad or revoked key must stall the matcher, not dead-letter every event.
+    with pytest.raises(EmbeddingUnavailable):
+        GeminiEmbedder(_Client(_Models(errors.APIError(code, body))), "m").embed(["a"])

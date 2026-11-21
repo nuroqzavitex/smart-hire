@@ -17,6 +17,7 @@ Mỗi ADR ghi một quyết định kiến trúc theo khuôn: **Context / Decisi
 | [0007](0007-ai-service-python-llm-port.md) | AI service bằng Python + cổng `LlmParser` | M1b |
 | [0008](0008-presigned-upload-valet-key.md) | Upload CV bằng presigned URL (valet key) + MinIO | M1b |
 | [0009](0009-cqrs-job-search-read-model.md) | CQRS cho tìm kiếm JD — read model OpenSearch + projector | M2a |
+| [0010](0010-ai-matching.md) | Matching CV ↔ JD — embedding Gemini, Qdrant, điểm tính sẵn | M2b |
 
 ## Chủ đề dự kiến (chưa có số)
 

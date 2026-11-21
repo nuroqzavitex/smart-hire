@@ -58,7 +58,7 @@ class GeminiEmbedder:
         try:
             resp = self._client.models.embed_content(model=self._model, contents=texts, config=config)
         except errors.APIError as exc:
-            if exc.code == 429 or exc.code >= 500:
+            if _transient(exc):
                 raise EmbeddingUnavailable(f"gemini status {exc.code}") from None
             raise
         except (ConnectionError, TimeoutError, OSError) as exc:
@@ -68,6 +68,14 @@ class GeminiEmbedder:
                 raise EmbeddingUnavailable(type(exc).__name__) from None
             raise
         return [_normalize(list(e.values)) for e in resp.embeddings]
+
+
+def _transient(exc: errors.APIError) -> bool:
+    """Rate limit, server error or a key problem: retrying later can succeed (a bad or
+    revoked key stalls the matcher until it is fixed instead of dead-lettering every event)."""
+    if exc.code in (401, 403, 429) or exc.code >= 500:
+        return True
+    return exc.code == 400 and "API_KEY" in f"{exc.details}{exc.message}"
 
 
 def build_embedder(settings: Settings) -> Embedder:

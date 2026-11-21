@@ -191,6 +191,32 @@ def test_active_cv_switches_on_reparse(setup: Any) -> None:
     assert [r.cv_id for r in store.top_candidates(job, 10)] == [old]
 
 
+def test_reactivated_cv_rescored_for_jobs_matched_while_inactive(setup: Any) -> None:
+    handler, store, _ = setup
+    cand = uuid.uuid4()
+    old, new = uuid.uuid4(), uuid.uuid4()
+    handler.handle(cv_event(old, cand, at=NOW))
+    handler.handle(cv_event(new, cand, at=NOW + timedelta(hours=1)))
+    job = uuid.uuid4()
+    handler.handle(job_event(job))  # matched while `old` is inactive: only `new` is scored
+    assert [r.cv_id for r in store.top_candidates(job, 10)] == [new]
+    handler.handle(cv_event(new, cand, version=3, status="UPLOADED"))
+    assert [r.cv_id for r in store.top_candidates(job, 10)] == [old]
+
+
+def test_reactivating_cv_without_vector_does_not_fail(setup: Any, engine: Engine) -> None:
+    # After a provider change the new collections are empty, while match_cvs
+    # still holds PARSED rows from the old model.
+    handler, store, vectors = setup
+    cand = uuid.uuid4()
+    old, new = uuid.uuid4(), uuid.uuid4()
+    handler.handle(cv_event(old, cand, at=NOW))
+    vectors.delete_cv(old)
+    handler.handle(cv_event(new, cand, at=NOW + timedelta(hours=1)))
+    handler.handle(cv_event(new, cand, version=3, status="UPLOADED"))
+    assert store.load_cv(new).status == "UPLOADED"
+
+
 def test_job_closed_removes_vector_and_results(setup: Any) -> None:
     handler, store, vectors = setup
     job = uuid.uuid4()

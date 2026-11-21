@@ -75,6 +75,9 @@ class KafkaConsumerLike(Protocol):
     def poll(self, timeout: float) -> Any: ...
     def commit(self, *, message: Any, asynchronous: bool) -> Any: ...
     def close(self) -> None: ...
+    def assignment(self) -> Any: ...
+    def pause(self, partitions: Any) -> Any: ...
+    def resume(self, partitions: Any) -> Any: ...
 
 
 def _describe(exc: Exception) -> str:
@@ -154,6 +157,7 @@ class RetryingConsumer:
     ) -> bool:
         attempts = 0
         outages = 0
+        paused: Any = None
         while True:
             attempts += 1
             try:
@@ -169,8 +173,11 @@ class RetryingConsumer:
                         "dependency unavailable, retrying",
                         extra={"event_id": env.event_id, "outage": outages, "error_type": type(exc).__name__},
                     )
+                    if paused is None:
+                        paused = self._pause()
                     if self._stop.wait(backoff(outages, self._base_s, self._transient_cap_s)):
                         return False
+                    self._keep_alive()
                     continue
                 if isinstance(exc, PermanentError):
                     self._log.warning("permanent error", extra={"event_id": env.event_id})
@@ -188,6 +195,8 @@ class RetryingConsumer:
                 if self._stop.wait(backoff(attempts, self._base_s, self._cap_s)):
                     return False
             else:
+                if paused is not None:
+                    self._resume(paused)
                 self._commit(msg)
                 return True
 
@@ -230,8 +239,38 @@ class RetryingConsumer:
         self._commit(msg)
         return True
 
+    def _pause(self) -> Any:
+        """Pauses the assignment so keep-alive polls fetch nothing (ADR 0010)."""
+        partitions = self._consumer.assignment()
+        self._consumer.pause(partitions)
+        return partitions
+
+    def _resume(self, partitions: Any) -> None:
+        try:
+            self._consumer.resume(partitions)
+        except confluent_kafka.KafkaException:
+            # Revoked meanwhile (rebalance): the new assignment is not paused.
+            self._log.warning("resume after outage failed")
+
+    def _keep_alive(self) -> None:
+        """Polls between transient retries so a long outage never exceeds
+        max.poll.interval.ms (the member would be evicted and its commit fail)."""
+        msg = self._consumer.poll(0)
+        if msg is not None and not msg.error():
+            # Only a partition assigned after a rebalance is unpaused: rewind it so
+            # the record is fetched again after the current one is handled.
+            self._log.warning("record received while paused, rewinding", extra={"offset": msg.offset()})
+            seek = getattr(self._consumer, "seek", None)
+            if seek is not None:
+                seek(confluent_kafka.TopicPartition(msg.topic(), msg.partition(), msg.offset()))
+
     def _commit(self, msg: MessageLike) -> None:
-        self._consumer.commit(message=msg, asynchronous=False)
+        try:
+            self._consumer.commit(message=msg, asynchronous=False)
+        except confluent_kafka.KafkaException:
+            # Partition revoked while we worked (rebalance): its new owner gets the
+            # record again and processed_events makes the redelivery a no-op.
+            self._log.warning("commit failed after rebalance", extra={"offset": msg.offset()})
 
 
 def _record(span: Span, exc: BaseException, message: str) -> None:

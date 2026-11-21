@@ -66,6 +66,7 @@ class VectorStore(Protocol):
     def set_cv_active(self, *, active: Sequence[UUID], inactive: Sequence[UUID]) -> None: ...
     def delete_job(self, job_id: UUID) -> None: ...
     def delete_cv(self, cv_id: UUID) -> None: ...
+    def get_cv_vector(self, cv_id: UUID) -> list[float] | None: ...
     def nearest_cvs(self, vector: list[float], limit: int) -> list[tuple[UUID, float]]: ...
     def nearest_jobs(self, vector: list[float], limit: int) -> list[tuple[UUID, float]]: ...
 
@@ -204,26 +205,17 @@ class MatchHandler:
         rows: list[MatchRow] = []
         if cv.parsed is not None:
             (vector,) = self._embedder.embed([cv_text(cv.parsed)])
-            hits = self._vectors.nearest_jobs(vector, POOL)
-            jobs = self._store.open_jobs([job_id for job_id, _ in hits])
-            for job_id, sim in hits:
-                job = jobs.get(job_id)
-                if job is None:
-                    continue
-                total, breakdown = score(sim, job, cv.parsed)
-                rows.append(
-                    MatchRow(
-                        job_id, cv.cv_id, cv.candidate_id, total, breakdown, self._embedder.model_version
-                    )
-                )
+            rows = self._score_cv(cv, vector)
         with self._store.transaction() as conn:
             if not self._store.record_event(conn, env.event_id) or not self._store.upsert_cv(conn, cv):
                 return
             active, others = self._store.refresh_active(conn, cv.candidate_id)
-            # Results of a parsed but inactive CV are kept (hidden by FindCandidates)
-            # so it ranks again at once if the newer CV is reparsed.
             self._store.delete_results_for_cvs(conn, [cv.cv_id])
             self._store.upsert_results(conn, rows)
+            if active is not None and active != cv.cv_id:
+                # Another CV of the candidate is (or becomes) active: rescore it from
+                # its stored vector, since jobs matched while it was inactive skipped it.
+                self._rescore_cv(conn, active)
             if vector is not None:
                 self._vectors.upsert_cv(
                     cv.cv_id, vector, candidate_id=cv.candidate_id, active=active == cv.cv_id
@@ -235,6 +227,33 @@ class MatchHandler:
                 inactive=[o for o in others if o != cv.cv_id],
             )
         log.info("cv matched", extra={"event_id": env.event_id, "cv_id": str(cv.cv_id), "status": cv.status})
+
+    def _score_cv(self, cv: CvProfile, vector: list[float]) -> list[MatchRow]:
+        """Scores a parsed CV against the nearest open jobs."""
+        if cv.parsed is None:
+            return []
+        hits = self._vectors.nearest_jobs(vector, POOL)
+        jobs = self._store.open_jobs([job_id for job_id, _ in hits])
+        rows: list[MatchRow] = []
+        for job_id, sim in hits:
+            job = jobs.get(job_id)
+            if job is None:
+                continue
+            total, breakdown = score(sim, job, cv.parsed)
+            rows.append(
+                MatchRow(job_id, cv.cv_id, cv.candidate_id, total, breakdown, self._embedder.model_version)
+            )
+        return rows
+
+    def _rescore_cv(self, conn: Any, cv_id: UUID) -> None:
+        cv = self._store.get_cv(conn, cv_id)
+        vector = self._vectors.get_cv_vector(cv_id)
+        if cv is None or vector is None:
+            # No vector in this model's collection (e.g. after a provider change):
+            # the CV is matched again on its next cv.updated.
+            return
+        self._store.delete_results_for_cvs(conn, [cv_id])
+        self._store.upsert_results(conn, self._score_cv(cv, vector))
 
     def _skip(self, env: Envelope) -> None:
         with self._store.transaction() as conn:

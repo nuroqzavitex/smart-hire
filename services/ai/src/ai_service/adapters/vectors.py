@@ -68,8 +68,12 @@ class QdrantVectors:
                 self._set_active([str(i) for i in ids], value)
 
     def _set_active(self, ids: list[str], value: bool) -> None:
-        selector: Any = ids
-        _guard(lambda: self._client.set_payload(self.cvs, {"active": value}, selector, wait=True))
+        # Explicit ids that have no point (e.g. CVs embedded with a previous model)
+        # make Qdrant answer 404, so only existing points are updated.
+        recs = _guard(lambda: self._client.retrieve(self.cvs, ids, with_payload=False, with_vectors=False))
+        selector: Any = [str(r.id) for r in recs]
+        if selector:
+            _guard(lambda: self._client.set_payload(self.cvs, {"active": value}, selector, wait=True))
 
     def delete_job(self, job_id: UUID) -> None:
         self._delete(self.jobs, job_id)

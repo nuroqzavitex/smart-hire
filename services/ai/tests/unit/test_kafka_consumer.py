@@ -65,8 +65,13 @@ class FakeConsumer:
         self.messages: list[FakeMessage] = []
         self.stop = stop
         self.commits: list[FakeMessage] = []
+        self.events: list[tuple[str, object]] = []
+        self.commit_error: Exception | None = None
 
     def poll(self, timeout: float) -> FakeMessage | None:
+        self.events.append(("poll", timeout))
+        if timeout == 0:
+            return None  # keep-alive poll while paused
         if self.messages:
             return self.messages.pop(0)
         self.stop.set()
@@ -74,10 +79,21 @@ class FakeConsumer:
 
     def commit(self, *, message: FakeMessage, asynchronous: bool) -> None:
         assert asynchronous is False
+        if self.commit_error is not None:
+            raise self.commit_error
         self.commits.append(message)
 
     def close(self) -> None:
         pass
+
+    def assignment(self) -> list[str]:
+        return ["tp-0"]
+
+    def pause(self, partitions: list[str]) -> None:
+        self.events.append(("pause", partitions))
+
+    def resume(self, partitions: list[str]) -> None:
+        self.events.append(("resume", partitions))
 
 
 class FakePublisher:
@@ -354,3 +370,29 @@ def test_make_consumer_topics_and_group(monkeypatch: pytest.MonkeyPatch):
     assert seen["conf"]["group.id"] == "ai-matcher"  # type: ignore[index]
     kafka_consumer.make_consumer("b:9092")
     assert seen["topics"] == ["cv.uploaded"]
+
+
+def test_transient_backoff_keeps_group_membership():
+    # A long outage must not exceed max.poll.interval.ms: the consumer pauses its
+    # partitions and keeps polling between retries, then resumes.
+    def handler(s: Setup, env: Envelope) -> None:
+        if s.calls <= 3:
+            raise Unavailable("rate limited")
+
+    s = Setup(handler, transient=(Unavailable,))
+    s.consumer.messages = []
+    msg = FakeMessage(_envelope_bytes())
+    assert s.rc.process(msg) is True
+    events = s.consumer.events
+    assert events[0] == ("pause", ["tp-0"])
+    assert events.count(("poll", 0)) == 3, "one keep-alive poll per backoff"
+    assert events[-1] == ("resume", ["tp-0"])
+    assert s.consumer.commits == [msg]
+
+
+def test_commit_failure_after_rebalance_is_not_fatal():
+    import confluent_kafka
+
+    s = Setup(_ok)
+    s.consumer.commit_error = confluent_kafka.KafkaException("UNKNOWN_MEMBER_ID")
+    assert s.rc.process(FakeMessage(_envelope_bytes())) is True
