@@ -1,0 +1,43 @@
+syntax = "proto3";
+package smarthire.notification.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// NotificationService lists the caller's notifications (ADR 0012). New ones
+// are also pushed over the gateway WebSocket (/v1/ws).
+service NotificationService {
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse) { option (google.api.http) = { get: "/v1/notifications" }; }
+  // Idempotent: marking an already read notification keeps its read_at.
+  rpc MarkNotificationRead(MarkNotificationReadRequest) returns (Notification) { option (google.api.http) = { post: "/v1/notifications/{id}:read" body: "*" }; }
+}
+
+message Notification {
+  string id = 1;
+  // welcome, cv_parsed, cv_parse_failed, application_received,
+  // application_status, candidates_matched
+  string type = 2;
+  string title = 3;
+  string body = 4;
+  // Ids the client can link to (job_id, application_id, cv_id, ...).
+  map<string, string> data = 5;
+  google.protobuf.Timestamp read_at = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message ListNotificationsRequest {
+  bool unread_only = 1;
+  int32 page_size = 2 [(buf.validate.field).int32 = {gte: 0, lte: 100}]; // 0 = default 20
+  string page_token = 3 [(buf.validate.field).string.max_len = 512];
+}
+
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+  string next_page_token = 2;
+  int32 unread_count = 3;
+}
+
+message MarkNotificationReadRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}

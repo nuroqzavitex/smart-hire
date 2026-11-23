@@ -67,6 +67,8 @@ definitions:
     - email
     - password
     type: object
+  NotificationServiceMarkNotificationReadBody:
+    type: object
   TokenResponse:
     properties:
       access_token:
@@ -492,6 +494,19 @@ definitions:
       next_page_token:
         type: string
     type: object
+  v1ListNotificationsResponse:
+    properties:
+      next_page_token:
+        type: string
+      notifications:
+        items:
+          $ref: '#/definitions/v1Notification'
+          type: object
+        type: array
+      unread_count:
+        format: int32
+        type: integer
+    type: object
   v1ListRecommendedJobsResponse:
     properties:
       jobs:
@@ -513,6 +528,31 @@ definitions:
       score:
         format: double
         type: number
+    type: object
+  v1Notification:
+    properties:
+      body:
+        type: string
+      created_at:
+        format: date-time
+        type: string
+      data:
+        additionalProperties:
+          type: string
+        description: Ids the client can link to (job_id, application_id, cv_id, ...).
+        type: object
+      id:
+        type: string
+      read_at:
+        format: date-time
+        type: string
+      title:
+        type: string
+      type:
+        title: |-
+          welcome, cv_parsed, cv_parse_failed, application_received,
+          application_status, candidates_matched
+        type: string
     type: object
   v1ParsedCV:
     properties:
@@ -1335,6 +1375,60 @@ paths:
             $ref: '#/definitions/rpcStatus'
       tags:
       - CandidateService
+  /v1/notifications:
+    get:
+      operationId: NotificationService_ListNotifications
+      parameters:
+      - in: query
+        name: unread_only
+        required: false
+        type: boolean
+      - description: 0 = default 20
+        format: int32
+        in: query
+        name: page_size
+        required: false
+        type: integer
+      - in: query
+        name: page_token
+        required: false
+        type: string
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1ListNotificationsResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - NotificationService
+  /v1/notifications/{id}:read:
+    post:
+      operationId: NotificationService_MarkNotificationRead
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/NotificationServiceMarkNotificationReadBody'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1Notification'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      summary: 'Idempotent: marking an already read notification keeps its read_at.'
+      tags:
+      - NotificationService
 produces:
 - application/json
 swagger: "2.0"
@@ -1350,3 +1444,7 @@ tags:
 - name: AuthService
 - name: CandidateService
 - name: JobService
+- description: |-
+    NotificationService lists the caller's notifications (ADR 0012). New ones
+    are also pushed over the gateway WebSocket (/v1/ws).
+  name: NotificationService

@@ -21,6 +21,10 @@
     },
     {
       "name": "JobService"
+    },
+    {
+      "name": "NotificationService",
+      "description": "NotificationService lists the caller's notifications (ADR 0012). New ones\nare also pushed over the gateway WebSocket (/v1/ws)."
     }
   ],
   "consumes": [
@@ -927,6 +931,89 @@
           "CandidateService"
         ]
       }
+    },
+    "/v1/notifications": {
+      "get": {
+        "operationId": "NotificationService_ListNotifications",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListNotificationsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "unread_only",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "name": "page_size",
+            "description": "0 = default 20",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "NotificationService"
+        ]
+      }
+    },
+    "/v1/notifications/{id}:read": {
+      "post": {
+        "summary": "Idempotent: marking an already read notification keeps its read_at.",
+        "operationId": "NotificationService_MarkNotificationRead",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Notification"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/NotificationServiceMarkNotificationReadBody"
+            }
+          }
+        ],
+        "tags": [
+          "NotificationService"
+        ]
+      }
     }
   },
   "definitions": {
@@ -980,6 +1067,9 @@
           "format": "int32"
         }
       }
+    },
+    "NotificationServiceMarkNotificationReadBody": {
+      "type": "object"
     },
     "protobufAny": {
       "type": "object",
@@ -1557,6 +1647,25 @@
         }
       }
     },
+    "v1ListNotificationsResponse": {
+      "type": "object",
+      "properties": {
+        "notifications": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Notification"
+          }
+        },
+        "next_page_token": {
+          "type": "string"
+        },
+        "unread_count": {
+          "type": "integer",
+          "format": "int32"
+        }
+      }
+    },
     "v1ListRecommendedJobsResponse": {
       "type": "object",
       "properties": {
@@ -1587,6 +1696,39 @@
         },
         "breakdown": {
           "$ref": "#/definitions/smarthireJobV1MatchBreakdown"
+        }
+      }
+    },
+    "v1Notification": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "title": "welcome, cv_parsed, cv_parse_failed, application_received,\napplication_status, candidates_matched"
+        },
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Ids the client can link to (job_id, application_id, cv_id, ...)."
+        },
+        "read_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     },
