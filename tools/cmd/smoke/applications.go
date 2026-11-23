@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -44,13 +45,13 @@ type applicationFixture struct {
 func (s *smoke) applicationFixture(tag string) (applicationFixture, error) {
 	var f applicationFixture
 	var err error
-	if f.recruiter, _, err = s.loginAs(s.recruiterEmail, s.recruiterPassword); err != nil {
+	if f.recruiter, err = s.accessFor(s.recruiterEmail, s.recruiterPassword); err != nil {
 		return f, err
 	}
-	if f.candidate, _, err = s.loginAs(s.candidateEmail, s.candidatePassword); err != nil {
+	if f.candidate, err = s.accessFor(s.candidateEmail, s.candidatePassword); err != nil {
 		return f, err
 	}
-	if f.other, _, err = s.login(); err != nil {
+	if f.other, err = s.accessFor(s.email, smokePassword); err != nil {
 		return f, err
 	}
 	pdf := minimalPDF([]string{
@@ -150,6 +151,8 @@ func (s *smoke) applicationSteps() []namedStep {
 	var f applicationFixture
 	var jobID string
 	var app smokeApplication
+	var ws *websocket.Conn
+	var ticket string
 
 	return []namedStep{
 		{"applications: job and parsed cv", func() (err error) {
@@ -200,6 +203,11 @@ func (s *smoke) applicationSteps() []namedStep {
 			}
 			return nil
 		}},
+		{"notifications: candidate opens a websocket with a ticket", func() (err error) {
+			ws, ticket, err = s.openNotifications(f.candidate)
+			return err
+		}},
+		{"notifications: reused ticket rejected", func() error { return s.reusedTicketRejected(ticket) }},
 		{"applications: recruiter lists and moves", func() error {
 			var list struct {
 				Applications []smokeApplication `json:"applications"`
@@ -220,6 +228,17 @@ func (s *smoke) applicationSteps() []namedStep {
 				return fmt.Errorf("backwards move: %w", err)
 			}
 			return nil
+		}},
+		{"notifications: candidate notified over websocket and marks it read", func() error {
+			defer func() { _ = ws.CloseNow() }()
+			n, err := awaitPushed(ws, "application_status", 30*time.Second)
+			if err != nil {
+				return err
+			}
+			if n.Data["application_id"] != app.ID {
+				return fmt.Errorf("pushed notification is for %q", n.Data["application_id"])
+			}
+			return s.markRead(f.candidate, n.ID)
 		}},
 		{"applications: others denied", func() error {
 			if err := s.getJSON("/v1/applications/"+url.PathEscape(app.ID), f.other, http.StatusNotFound, nil); err != nil {

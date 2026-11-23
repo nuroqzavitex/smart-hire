@@ -30,18 +30,22 @@ const (
 )
 
 type smoke struct {
-	base   string
-	origin string
-	kafka  string
-	client *http.Client
-	email  string
-	userID string
+	base    string
+	origin  string
+	kafka   string
+	mailpit string
+	client  *http.Client
+	email   string
+	userID  string
 
 	recruiterEmail    string
 	recruiterPassword string
 
 	candidateEmail    string
 	candidatePassword string
+
+	// tokens caches access tokens by email (accessFor).
+	tokens map[string]string
 }
 
 type namedStep struct {
@@ -59,6 +63,7 @@ func main() {
 	base := flag.String("base", "http://localhost:8080", "gateway base URL")
 	origin := flag.String("origin", "http://localhost:3001", "allowed Origin sent on cookie routes")
 	kafka := flag.String("kafka", "127.0.0.1:19092", "Kafka (Redpanda) dev listener")
+	mailpit := flag.String("mailpit", "http://127.0.0.1:8025", "Mailpit web/API base URL")
 	recruiterEmail := flag.String("recruiter-email", "recruiter@smarthire.local", "seeded recruiter email")
 	recruiterPassword := flag.String("recruiter-password", "Password123!", "seeded recruiter password")
 	candidateEmail := flag.String("candidate-email", "candidate@smarthire.local", "seeded candidate email")
@@ -70,6 +75,7 @@ func main() {
 		base:              strings.TrimRight(*base, "/"),
 		origin:            *origin,
 		kafka:             *kafka,
+		mailpit:           strings.TrimRight(*mailpit, "/"),
 		recruiterEmail:    *recruiterEmail,
 		recruiterPassword: *recruiterPassword,
 		candidateEmail:    *candidateEmail,
@@ -115,6 +121,7 @@ func (s *smoke) run() error {
 		{"refresh RT2 after family revoked", func() error { return s.refreshDenied(rt2) }},
 		{"login logout refresh", s.loginLogoutRefresh},
 	}
+	steps = append(steps, s.welcomeSteps()...)
 	steps = append(steps, s.jobSteps()...)
 	steps = append(steps, s.searchSteps()...)
 	steps = append(steps, s.cvSteps()...)
@@ -210,6 +217,24 @@ func (s *smoke) register() error {
 	}
 	s.userID = out.UserID
 	return nil
+}
+
+// accessFor returns an access token for email, logging in only once per run:
+// the login route is rate limited per IP (10/min), and steps that only need a
+// token must not use up the budget of the steps that test login itself.
+func (s *smoke) accessFor(email, password string) (string, error) {
+	if tok, ok := s.tokens[email]; ok {
+		return tok, nil
+	}
+	tok, _, err := s.loginAs(email, password)
+	if err != nil {
+		return "", err
+	}
+	if s.tokens == nil {
+		s.tokens = map[string]string{}
+	}
+	s.tokens[email] = tok
+	return tok, nil
 }
 
 // login logs the smoke user in and returns the access token and the refresh

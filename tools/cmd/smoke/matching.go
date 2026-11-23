@@ -52,13 +52,13 @@ func (s *smoke) matchingSteps() []namedStep {
 
 	return []namedStep{
 		{"matching: logins", func() (err error) {
-			if recruiter, _, err = s.loginAs(s.recruiterEmail, s.recruiterPassword); err != nil {
+			if recruiter, err = s.accessFor(s.recruiterEmail, s.recruiterPassword); err != nil {
 				return err
 			}
-			if candidate, _, err = s.loginAs(s.candidateEmail, s.candidatePassword); err != nil {
+			if candidate, err = s.accessFor(s.candidateEmail, s.candidatePassword); err != nil {
 				return err
 			}
-			other, _, err = s.login() // the freshly registered smoke candidate
+			other, err = s.accessFor(s.email, smokePassword) // the freshly registered smoke candidate
 			return err
 		}},
 		{"matching: publish job", func() (err error) {

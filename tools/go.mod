@@ -3,6 +3,7 @@ module github.com/nuroqzavitex/smarthire/tools
 go 1.27
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/twmb/franz-go v1.22.3
 	sigs.k8s.io/yaml v1.6.0

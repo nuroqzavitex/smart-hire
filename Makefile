@@ -1,5 +1,5 @@
 .PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job cover-candidate cover-application cover-notification \
-	ai-sync ai-lint ai-test ai-test-int ai-cover minio-image opensearch-image infra-up obs-up up down down-v migrate seed smoke chaos-ai db-init search-rebuild search-reconcile logs
+	ai-sync ai-lint ai-test ai-test-int ai-cover minio-image opensearch-image infra-up obs-up up down down-v migrate seed smoke chaos-ai obs-check db-init search-rebuild search-reconcile logs
 
 # Compose stack (deploy/docker), project name smarthire. Paths are absolute
 # and MSYS_NO_PATHCONV stops Git Bash on Windows from rewriting them.
@@ -188,6 +188,11 @@ search-reconcile:
 smoke:
 	go run ./tools/cmd/smoke -base $(GATEWAY_URL) -origin $(SMOKE_ORIGIN) -kafka $(KAFKA_ADDR)
 	$(COMPOSE) run --rm job-projector reconcile
+
+# Telemetry pipeline check (ADR 0013): service metrics in Prometheus, logs in
+# Loki, alert rules loaded. Run after `make smoke` so there is fresh traffic.
+obs-check:
+	go run ./tools/cmd/obscheck
 
 # M3 chaos run (ADR 0011): with ai-api stopped every application must end in
 # NEEDS_MANUAL_REVIEW and the application service's AI breaker must open.

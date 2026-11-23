@@ -4,7 +4,7 @@ SmartHire là nền tảng tuyển dụng (phân tích CV, so khớp CV với JD
 
 ## Kiến trúc mục tiêu
 
-Sơ đồ dưới là kiến trúc đích (spec.md §4). Phần **đã có (M0 + M1a + M1b + M2a + M2b + M3)** được tô xanh: API Gateway, Auth Service, Job Service (kèm projector), Candidate Service, Application Service (saga nộp đơn), AI Service (Python: parse CV và matching CV ↔ JD), Postgres `auth_db`, `job_db`, `candidate_db`, `application_db` và `ai_db`, OpenSearch (read model tìm kiếm JD), Qdrant (vector CV/JD), Redis, Kafka (Redpanda), MinIO. Các thành phần còn lại (Notification, Web App) thuộc các milestone sau.
+Sơ đồ dưới là kiến trúc đích (spec.md §4). Phần **đã có (M0 + M1a + M1b + M2a + M2b + M3 + M4a)** được tô xanh: API Gateway, Auth Service, Job Service (kèm projector), Candidate Service, Application Service (saga nộp đơn), Notification Service, AI Service (Python: parse CV và matching CV ↔ JD), Postgres `auth_db`, `job_db`, `candidate_db`, `application_db`, `notification_db` và `ai_db`, OpenSearch (read model tìm kiếm JD), Qdrant (vector CV/JD), Redis, Kafka (Redpanda), MinIO. Thành phần còn lại (Web App) thuộc các milestone sau.
 
 ```mermaid
 flowchart LR
@@ -44,7 +44,7 @@ flowchart LR
     K -. user.deleted .-> AUTH
 
     classDef m0 fill:#d3f9d8,stroke:#2f9e44,color:#000;
-    class GW,AUTH,PGA,RD,JOB,PGJ,OS,K,CAND,AI,S3,PGC,PGAI,APP,PGP m0;
+    class GW,AUTH,PGA,RD,JOB,PGJ,OS,K,CAND,AI,S3,PGC,PGAI,APP,PGP,NOTI m0;
 ```
 
 Từ M1a, Auth và Job **ghi** sự kiện (`user.registered`, `job.created|updated|closed|deleted`) vào bảng `outbox` trong cùng transaction với dữ liệu nghiệp vụ; một relay chạy trong process của mỗi service (poll `FOR UPDATE SKIP LOCKED`, at-least-once) đẩy chúng sang Kafka (Redpanda), kèm carrier W3C trong cột `headers` để trace đi tiếp qua Kafka. Consumer retry trong process rồi chuyển vào `<topic>.dlq`. Xem [ADR 0005](docs/adr/0005-outbox-relay-headers.md) và [ADR 0006](docs/adr/0006-kafka-client-retry-dlq.md).
@@ -54,6 +54,8 @@ Từ M1b, ứng viên upload CV (PDF) thẳng lên MinIO bằng presigned URL ([
 Từ M2a, tìm kiếm JD theo CQRS ([ADR 0009](docs/adr/0009-cqrs-job-search-read-model.md)): `job-projector` consume `job.*` và ghi vào OpenSearch (tiếng Việt không dấu, đồng nghĩa kỹ năng, facet) bằng external version + tombstone, nên event trùng, sai thứ tự hay đến muộn sau khi xoá đều không làm hỏng read model. `GET /v1/jobs` đọc OpenSearch qua circuit breaker; OpenSearch lỗi thì quay về Postgres `tsvector` và trả `degraded: true`. `make search-rebuild` dựng lại index từ Postgres không gián đoạn (alias đọc/ghi tách riêng), `make search-reconcile` so số JD đang mở giữa hai bên.
 
 Từ M3, nộp đơn là một Saga orchestration tự viết ([ADR 0011](docs/adr/0011-application-saga-orchestration.md)): `POST /v1/applications` (header `Idempotency-Key`) kiểm tra JD và CV rồi ghi đơn `PENDING` cùng trạng thái saga trong một transaction và trả 202; worker trong service Application nhận saga bằng lease (`FOR UPDATE SKIP LOCKED`), giữ quota ở Candidate, gọi AI `ScoreMatch` qua timeout + retry + circuit breaker, và bù trừ (trả quota, huỷ đơn) khi quá hạn hoặc JD bị đóng. AI sập thì đơn sang `NEEDS_MANUAL_REVIEW` thay vì kẹt; `make chaos-ai` kiểm chứng điều này.
+
+Từ M4a, Notification service ([ADR 0012](docs/adr/0012-notification-ws-ticket-email-outbox.md)) biến sự kiện thành thông báo trong app, đẩy realtime qua WebSocket (gateway cấp ticket dùng một lần rồi proxy sang Notification) và gửi email qua "email outbox" có retry (Mailpit trong dev). Mọi service Go và Python đẩy trace, metrics và log bằng OTLP qua collector sang Tempo, Prometheus và Loki ([ADR 0013](docs/adr/0013-telemetry-through-otel-collector.md)); Grafana có dashboard "SmartHire — overview" và 7 alert rule, `make obs-check` kiểm tra đường ống.
 
 ## Quick start
 
@@ -80,6 +82,8 @@ Sau `make seed` có ba tài khoản: admin (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PAS
 **Nâng từ M2a:** M2b thêm Qdrant, `ai-matcher` và topic `cv.updated`/`match.completed`; chạy lại `make infra-up obs-up up migrate` (tạo topic mới, migration `ai_db` 0002). CV đã parse trước đó phải sửa hoặc parse lại mới được ghép.
 
 **Nâng từ M2b:** M3 thêm service `application`, `application_db` và topic `application.*`; thêm `APPLICATION_DB_PASSWORD` vào `.env` (xem `.env.example`) rồi chạy `make db-init infra-up up migrate` (volume Postgres cũ không tự chạy script khởi tạo mới).
+
+**Nâng từ M3:** M4a thêm `notification`, Mailpit, Prometheus và Loki; thêm `NOTIFICATION_DB_PASSWORD` vào `.env` rồi chạy `make db-init infra-up obs-up up migrate`. Grafana `http://localhost:3000`, Prometheus `:9090`, Mailpit `:8025`.
 
 **Nâng từ M1b:** M2a thêm OpenSearch (`make infra-up` tự build image) và `job-projector`; không cần `down-v`. Nếu index lệch (ví dụ event cũ đã vào DLQ), chạy `make search-rebuild`.
 
@@ -123,7 +127,8 @@ Xem trace của một request: gọi `GET /v1/me`, mở Grafana → Explore → 
 | M2a | CQRS tìm kiếm JD: read model OpenSearch + projector, rebuild/reconcile, circuit breaker + fallback Postgres | ✅ |
 | M2b | Matching CV ↔ JD: embedding (Gemini sau port, mặc định fake), Qdrant, điểm tính sẵn qua sự kiện, gRPC AI có timeout + circuit breaker | ✅ |
 | M3 | Application + Saga (orchestration) + resilience: nộp đơn 202 + Idempotency-Key, worker saga có lease/recovery, quota ở Candidate có bù trừ, AI lỗi → `NEEDS_MANUAL_REVIEW`, `make chaos-ai` | ✅ |
-| M4 | Notification + observability đầy đủ + saga xoá tài khoản (choreography) | Chưa bắt đầu |
+| M4a | Notification (in-app, WebSocket qua ticket, email outbox + Mailpit) + observability (metrics/log qua OTel collector → Prometheus/Loki, dashboard, alert, `make obs-check`) | ✅ |
+| M4b | Saga xoá tài khoản (choreography, `user.deleted` / `user.data_purged`) | Chưa bắt đầu |
 | M5 | Frontend tối giản + E2E + k6 + video demo | Chưa bắt đầu |
 | M6 | (tuỳ chọn) Helm/K8s | Chưa bắt đầu |
 
@@ -146,5 +151,6 @@ Xem trace của một request: gọi `GET /v1/me`, mở Grafana → Explore → 
 - Thiết kế M1b: [`docs/superpowers/specs/2026-11-11-m1b-candidate-ai-parse-design.md`](docs/superpowers/specs/2026-11-11-m1b-candidate-ai-parse-design.md); plan: [`docs/superpowers/plans/2026-11-11-m1b-candidate-ai.md`](docs/superpowers/plans/2026-11-11-m1b-candidate-ai.md)
 - Thiết kế M2a: [`docs/superpowers/specs/2026-11-20-m2a-cqrs-job-search-design.md`](docs/superpowers/specs/2026-11-20-m2a-cqrs-job-search-design.md); plan: [`docs/superpowers/plans/2026-11-20-m2a-cqrs-job-search.md`](docs/superpowers/plans/2026-11-20-m2a-cqrs-job-search.md)
 - Thiết kế M2b: [`docs/superpowers/specs/2026-11-20-m2b-matching-design.md`](docs/superpowers/specs/2026-11-20-m2b-matching-design.md); plan: [`docs/superpowers/plans/2026-11-20-m2b-matching.md`](docs/superpowers/plans/2026-11-20-m2b-matching.md)
+- Thiết kế M4a: [`docs/superpowers/specs/2026-11-23-m4a-notification-observability-design.md`](docs/superpowers/specs/2026-11-23-m4a-notification-observability-design.md); plan: [`docs/superpowers/plans/2026-11-23-m4a-notification-observability.md`](docs/superpowers/plans/2026-11-23-m4a-notification-observability.md)
 - Thiết kế M3: [`docs/superpowers/specs/2026-11-23-m3-application-saga-design.md`](docs/superpowers/specs/2026-11-23-m3-application-saga-design.md); plan: [`docs/superpowers/plans/2026-11-23-m3-application-saga.md`](docs/superpowers/plans/2026-11-23-m3-application-saga.md)
 - OpenAPI của Gateway: [`contracts/openapi/gateway.yaml`](contracts/openapi/gateway.yaml)

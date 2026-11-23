@@ -19,6 +19,8 @@ Mỗi ADR ghi một quyết định kiến trúc theo khuôn: **Context / Decisi
 | [0009](0009-cqrs-job-search-read-model.md) | CQRS cho tìm kiếm JD — read model OpenSearch + projector | M2a |
 | [0010](0010-ai-matching.md) | Matching CV ↔ JD — embedding Gemini, Qdrant, điểm tính sẵn | M2b |
 | [0011](0011-application-saga-orchestration.md) | Nộp đơn bằng Saga orchestration tự viết — worker quét bảng, lease, version guard | M3 |
+| [0012](0012-notification-ws-ticket-email-outbox.md) | Notification — bản sao cục bộ, email outbox, WebSocket qua gateway bằng ticket | M4a |
+| [0013](0013-telemetry-through-otel-collector.md) | Metrics và log đi qua OTel collector tới Prometheus và Loki | M4a |
 
 ## Chủ đề dự kiến (chưa có số)
 
