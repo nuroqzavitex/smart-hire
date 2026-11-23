@@ -21,10 +21,13 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	"net/url"
+
 	applicationv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/application/v1"
 	authv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/auth/v1"
 	candidatev1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/candidate/v1"
 	jobv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1"
+	notificationv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/notification/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/authhttp"
@@ -32,6 +35,7 @@ import (
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/httperr"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/middleware"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/ratelimit"
+	"github.com/nuroqzavitex/smarthire/services/gateway/internal/wsproxy"
 )
 
 // Deps are the router's collaborators.
@@ -41,10 +45,14 @@ type Deps struct {
 	JobConn       *grpc.ClientConn
 	CandidateConn *grpc.ClientConn
 	AppConn       *grpc.ClientConn
-	Verifier      grpcx.TokenVerifier
-	Limiter       *ratelimit.Limiter
-	Cfg           config.Config
-	Ready         func(context.Context) error
+	NotifConn     *grpc.ClientConn
+	// WSTickets and NotifWSURL back /v1/ws/ticket and /v1/ws (ADR 0012).
+	WSTickets  *wsproxy.Tickets
+	NotifWSURL *url.URL
+	Verifier   grpcx.TokenVerifier
+	Limiter    *ratelimit.Limiter
+	Cfg        config.Config
+	Ready      func(context.Context) error
 }
 
 // ParseTrustedProxies parses CIDRs (a bare IP is accepted as a single host).
@@ -157,6 +165,10 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 		return nil, fmt.Errorf("register application gateway handler: %w", err)
 	}
 
+	if err := notificationv1.RegisterNotificationServiceHandlerClient(ctx, mux, notificationv1.NewNotificationServiceClient(d.NotifConn)); err != nil {
+		return nil, fmt.Errorf("register notification gateway handler: %w", err)
+	}
+
 	api := stripGRPCTimeout(http.MaxBytesHandler(mux, maxBodyBytes))
 	apiLarge := stripGRPCTimeout(http.MaxBytesHandler(mux, maxParsedBodyBytes))
 
@@ -192,6 +204,11 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	r.Post("/v1/auth/refresh", h.Refresh)
 	r.Post("/v1/auth/logout", h.Logout)
 
+	// WebSocket (ADR 0012): authenticated by the one-use ticket in the query,
+	// not by a bearer header, so it sits outside RejectInvalidAuth and the
+	// body limit.
+	r.Get("/v1/ws", wsproxy.Handler(d.WSTickets, d.NotifWSURL, d.Cfg.CORSOrigins, d.Log).ServeHTTP)
+
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RejectInvalidAuth)
 		r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
@@ -205,6 +222,7 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 			w.WriteHeader(http.StatusOK)
 		})
 		r.With(middleware.RequireAuth).Get("/v1/me", api.ServeHTTP)
+		r.With(middleware.RequireAuth).Post("/v1/ws/ticket", wsproxy.TicketHandler(d.WSTickets, d.Log).ServeHTTP)
 		r.Patch("/v1/cvs/{id}/parsed", apiLarge.ServeHTTP)
 		r.Handle("/v1/*", api)
 	})

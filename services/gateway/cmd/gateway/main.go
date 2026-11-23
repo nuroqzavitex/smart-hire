@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"net/url"
+
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
@@ -21,12 +23,15 @@ import (
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/config"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/ratelimit"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/router"
+	"github.com/nuroqzavitex/smarthire/services/gateway/internal/wsproxy"
 )
 
 const (
 	serviceName     = "gateway"
 	verifierRetry   = 30 * time.Second
 	shutdownTimeout = 30 * time.Second
+	// wsTicketTTL is how long a WebSocket ticket stays redeemable (ADR 0012).
+	wsTicketTTL = 30 * time.Second
 )
 
 func main() {
@@ -89,6 +94,16 @@ func run() error {
 	}
 	defer func() { _ = appConn.Close() }()
 
+	notifConn, err := grpcx.Dial(cfg.NotificationGRPCAddr)
+	if err != nil {
+		return fmt.Errorf("dial notification: %w", err)
+	}
+	defer func() { _ = notifConn.Close() }()
+	notifWS, err := url.Parse(cfg.NotificationWSURL)
+	if err != nil {
+		return fmt.Errorf("GATEWAY_NOTIFICATION_WS_URL: %w", err)
+	}
+
 	verifier, err := authz.NewVerifierWithRetry(ctx, cfg.AuthJWKSURL, cfg.JWTIssuer, cfg.JWTAudience, verifierRetry, log)
 	if err != nil {
 		return err
@@ -104,10 +119,13 @@ func run() error {
 		JobConn:       jobConn,
 		CandidateConn: candConn,
 		AppConn:       appConn,
+		NotifConn:     notifConn,
+		WSTickets:     wsproxy.NewTickets(rdb, wsTicketTTL),
+		NotifWSURL:    notifWS,
 		Verifier:      verifier,
 		Limiter:       ratelimit.New(rdb),
 		Cfg:           cfg,
-		Ready:         router.ConnsReady(conn, jobConn, candConn, appConn),
+		Ready:         router.ConnsReady(conn, jobConn, candConn, appConn, notifConn),
 	})
 	if err != nil {
 		return err

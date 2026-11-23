@@ -3,6 +3,8 @@ module github.com/nuroqzavitex/smarthire/services/gateway
 go 1.27
 
 require (
+	github.com/alicebob/miniredis/v2 v2.40.0
+	github.com/coder/websocket v1.8.15
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-chi/cors v1.2.2
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.33.0
@@ -72,6 +74,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect
 	github.com/tklauser/numcpus v0.12.0 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/bridges/otelslog v0.21.0 // indirect

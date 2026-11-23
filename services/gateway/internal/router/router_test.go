@@ -22,16 +22,24 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
+	"encoding/json"
+	"net/url"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/coder/websocket"
+	"github.com/google/uuid"
 	applicationv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/application/v1"
 	authv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/auth/v1"
 	candidatev1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/candidate/v1"
 	jobv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1"
+	notificationv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/notification/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
 	"github.com/nuroqzavitex/smarthire/pkg/authz/authztest"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/config"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/ratelimit"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/router"
+	"github.com/nuroqzavitex/smarthire/services/gateway/internal/wsproxy"
 )
 
 const origin = "https://app.example"
@@ -244,13 +252,27 @@ func (f *fakeApplication) md() metadata.MD {
 	return f.submitMD
 }
 
+type fakeNotification struct {
+	notificationv1.UnimplementedNotificationServiceServer
+	mu    sync.Mutex
+	calls int
+}
+
+func (f *fakeNotification) ListNotifications(context.Context, *notificationv1.ListNotificationsRequest) (*notificationv1.ListNotificationsResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	return &notificationv1.ListNotificationsResponse{UnreadCount: 3}, nil
+}
+
 type env struct {
-	h    http.Handler
-	fake *fakeAuth
-	job  *fakeJob
-	cand *fakeCandidate
-	app  *fakeApplication
-	is   *authztest.KeyIssuer
+	h     http.Handler
+	fake  *fakeAuth
+	job   *fakeJob
+	cand  *fakeCandidate
+	app   *fakeApplication
+	notif *fakeNotification
+	is    *authztest.KeyIssuer
 }
 
 func setup(t *testing.T) *env {
@@ -307,12 +329,43 @@ func setup(t *testing.T) *env {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = aconn.Close() })
 
+	fn := &fakeNotification{}
+	nlis := bufconn.Listen(1 << 20)
+	nsrv, _ := grpcx.NewServer(grpcx.ServerConfig{Verifier: v, PublicMethods: []string{}})
+	notificationv1.RegisterNotificationServiceServer(nsrv, fn)
+	go func() { _ = nsrv.Serve(nlis) }()
+	t.Cleanup(nsrv.Stop)
+	nconn, err := grpcx.Dial("passthrough:///notifbufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return nlis.Dial() }))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = nconn.Close() })
+
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	wsUp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = c.CloseNow() }()
+		ctx := c.CloseRead(r.Context())
+		_ = c.Write(ctx, websocket.MessageText, []byte("hello "+r.Header.Get("X-User-ID")))
+		<-ctx.Done()
+	}))
+	t.Cleanup(wsUp.Close)
+	wsURL, err := url.Parse(wsUp.URL + "/ws")
+	require.NoError(t, err)
+
 	h, err := router.New(t.Context(), router.Deps{
 		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		AuthConn:      conn,
 		JobConn:       jconn,
 		CandidateConn: cconn,
 		AppConn:       aconn,
+		NotifConn:     nconn,
+		WSTickets:     wsproxy.NewTickets(rdb, 30*time.Second),
+		NotifWSURL:    wsURL,
 		Verifier:      v,
 		Limiter:       ratelimit.New(allowAll{}),
 		Cfg: config.Config{
@@ -322,7 +375,7 @@ func setup(t *testing.T) *env {
 		Ready: func(context.Context) error { return nil },
 	})
 	require.NoError(t, err)
-	return &env{h: h, fake: fake, job: fj, cand: fc, app: fa, is: is}
+	return &env{h: h, fake: fake, job: fj, cand: fc, app: fa, notif: fn, is: is}
 }
 
 func (e *env) do(method, path, body string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -722,4 +775,38 @@ func TestRouter_CORSAllowsIdempotencyKey(t *testing.T) {
 		"Access-Control-Request-Headers": "idempotency-key,content-type",
 	})
 	assert.Contains(t, strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers")), "idempotency-key")
+}
+
+func TestRouter_NotificationsListed(t *testing.T) {
+	e := setup(t)
+	tok := e.is.Sign(t, "u-1", authz.RoleCandidate, time.Minute)
+	rec := e.do("GET", "/v1/notifications", "", map[string]string{"Authorization": "Bearer " + tok})
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"unread_count":3`)
+}
+
+// The whole middleware chain (recovery, otelhttp, logging, auth, rate
+// limit) must let the WebSocket upgrade through.
+func TestRouter_WebSocketThroughTicket(t *testing.T) {
+	e := setup(t)
+	srv := httptest.NewServer(e.h)
+	t.Cleanup(srv.Close)
+	sub := uuid.NewString()
+	tok := e.is.Sign(t, sub, authz.RoleCandidate, time.Minute)
+
+	rec := e.do("POST", "/v1/ws/ticket", "", map[string]string{"Authorization": "Bearer " + tok})
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	var body struct{ Ticket string }
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.Equal(t, 401, e.do("POST", "/v1/ws/ticket", "", nil).Code, "ticket needs a token")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/v1/ws?ticket="+body.Ticket,
+		&websocket.DialOptions{HTTPHeader: http.Header{"Origin": []string{origin}}})
+	require.NoError(t, err)
+	defer func() { _ = c.CloseNow() }()
+	_, msg, err := c.Read(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "hello "+sub, string(msg))
 }

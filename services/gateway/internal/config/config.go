@@ -15,6 +15,8 @@ type Config struct {
 	JobGRPCAddr          string   `env:"JOB_GRPC_ADDR" envDefault:"job:9002"`
 	CandidateGRPCAddr    string   `env:"CANDIDATE_GRPC_ADDR" envDefault:"candidate:9003"`
 	ApplicationGRPCAddr  string   `env:"APPLICATION_GRPC_ADDR" envDefault:"application:9004"`
+	NotificationGRPCAddr string   `env:"NOTIFICATION_GRPC_ADDR" envDefault:"notification:9005"`
+	NotificationWSURL    string   `env:"NOTIFICATION_WS_URL" envDefault:"http://notification:8005/ws"`
 	AuthJWKSURL          string   `env:"AUTH_JWKS_URL" envDefault:"http://auth:8001/.well-known/jwks.json"`
 	JWTIssuer            string   `env:"JWT_ISSUER" envDefault:"smarthire-auth"`
 	JWTAudience          string   `env:"JWT_AUDIENCE" envDefault:"smarthire-api"`
