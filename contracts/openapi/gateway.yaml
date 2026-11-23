@@ -300,6 +300,42 @@ definitions:
       upload_url:
         type: string
     type: object
+  v1DeleteMeRequest:
+    properties:
+      password:
+        type: string
+    type: object
+  v1DeleteMeResponse:
+    properties:
+      deletion_request_id:
+        type: string
+      status:
+        type: string
+    type: object
+  v1DeletionRequest:
+    properties:
+      completed_at:
+        format: date-time
+        type: string
+      expected_services:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      purged_services:
+        items:
+          type: string
+        type: array
+      requested_at:
+        format: date-time
+        type: string
+      status:
+        title: PENDING | COMPLETED | STUCK
+        type: string
+      user_id:
+        type: string
+    type: object
   v1Education:
     description: |-
       Content limits of ParsedCV (lengths, ranges, YYYY-MM dates) are enforced by
@@ -687,6 +723,26 @@ info:
   title: SmartHire Gateway API
   version: version not set
 paths:
+  /v1/admin/deletion-requests/{id}:
+    get:
+      operationId: AuthService_GetDeletionRequest
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1DeletionRequest'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      summary: GetDeletionRequest shows which services confirmed a purge (admin only).
+      tags:
+      - AuthService
   /v1/applications:
     get:
       operationId: ApplicationService_ListApplications
@@ -1294,6 +1350,28 @@ paths:
       tags:
       - JobService
   /v1/me:
+    delete:
+      operationId: AuthService_DeleteMe
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/v1DeleteMeRequest'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1DeleteMeResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      summary: |-
+        DeleteMe starts the account-deletion saga (ADR 0014): it re-checks the
+        password, marks the account DELETION_PENDING and answers 202.
+      tags:
+      - AuthService
     get:
       operationId: AuthService_GetMe
       responses:

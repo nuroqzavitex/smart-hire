@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthire.local/events/user.data_purged.v1.json",
+  "title": "user.data_purged v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "source",
+    "occurred_at",
+    "trace_id",
+    "correlation_id",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "event_type": {
+      "const": "user.data_purged"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "source": {
+      "enum": [
+        "candidate-service",
+        "job-service",
+        "application-service",
+        "ai-service",
+        "notification-service"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trace_id": {
+      "type": "string"
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user_id",
+        "service",
+        "deletion_request_id",
+        "purged_at"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "service": {
+          "enum": [
+            "candidate",
+            "job",
+            "application",
+            "ai",
+            "notification"
+          ]
+        },
+        "deletion_request_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "purged_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

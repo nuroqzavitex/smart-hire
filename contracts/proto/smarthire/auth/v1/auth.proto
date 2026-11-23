@@ -16,6 +16,15 @@ service AuthService {
   rpc GetMe(GetMeRequest) returns (User) {
     option (google.api.http) = { get: "/v1/me" };
   }
+  // DeleteMe starts the account-deletion saga (ADR 0014): it re-checks the
+  // password, marks the account DELETION_PENDING and answers 202.
+  rpc DeleteMe(DeleteMeRequest) returns (DeleteMeResponse) {
+    option (google.api.http) = { delete: "/v1/me" body: "*" };
+  }
+  // GetDeletionRequest shows which services confirmed a purge (admin only).
+  rpc GetDeletionRequest(GetDeletionRequestRequest) returns (DeletionRequest) {
+    option (google.api.http) = { get: "/v1/admin/deletion-requests/{id}" };
+  }
 }
 
 enum Role { ROLE_UNSPECIFIED = 0; ROLE_CANDIDATE = 1; ROLE_RECRUITER = 2; ROLE_ADMIN = 3; }
@@ -35,3 +44,16 @@ message LogoutRequest  { string refresh_token = 1; }
 message TokenPair { string access_token = 1; int64 expires_in = 2; string refresh_token = 3; }
 message GetMeRequest {}
 message User { string id = 1; string email = 2; Role role = 3; google.protobuf.Timestamp created_at = 4; }
+message DeleteMeRequest { string password = 1 [(buf.validate.field).string = {min_len: 1, max_len: 128}]; }
+message DeleteMeResponse { string deletion_request_id = 1; string status = 2; }
+message GetDeletionRequestRequest { string id = 1 [(buf.validate.field).string.uuid = true]; }
+message DeletionRequest {
+  string id = 1;
+  string user_id = 2;
+  // PENDING | COMPLETED | STUCK
+  string status = 3;
+  repeated string expected_services = 4;
+  repeated string purged_services = 5;
+  google.protobuf.Timestamp requested_at = 6;
+  google.protobuf.Timestamp completed_at = 7;
+}

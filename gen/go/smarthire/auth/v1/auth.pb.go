@@ -485,6 +485,239 @@ func (x *User) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type DeleteMeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Password      string                 `protobuf:"bytes,1,opt,name=password,proto3" json:"password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteMeRequest) Reset() {
+	*x = DeleteMeRequest{}
+	mi := &file_smarthire_auth_v1_auth_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteMeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMeRequest) ProtoMessage() {}
+
+func (x *DeleteMeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_auth_v1_auth_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMeRequest.ProtoReflect.Descriptor instead.
+func (*DeleteMeRequest) Descriptor() ([]byte, []int) {
+	return file_smarthire_auth_v1_auth_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *DeleteMeRequest) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+type DeleteMeResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	DeletionRequestId string                 `protobuf:"bytes,1,opt,name=deletion_request_id,json=deletionRequestId,proto3" json:"deletion_request_id,omitempty"`
+	Status            string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *DeleteMeResponse) Reset() {
+	*x = DeleteMeResponse{}
+	mi := &file_smarthire_auth_v1_auth_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteMeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMeResponse) ProtoMessage() {}
+
+func (x *DeleteMeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_auth_v1_auth_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMeResponse.ProtoReflect.Descriptor instead.
+func (*DeleteMeResponse) Descriptor() ([]byte, []int) {
+	return file_smarthire_auth_v1_auth_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *DeleteMeResponse) GetDeletionRequestId() string {
+	if x != nil {
+		return x.DeletionRequestId
+	}
+	return ""
+}
+
+func (x *DeleteMeResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type GetDeletionRequestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDeletionRequestRequest) Reset() {
+	*x = GetDeletionRequestRequest{}
+	mi := &file_smarthire_auth_v1_auth_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDeletionRequestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDeletionRequestRequest) ProtoMessage() {}
+
+func (x *GetDeletionRequestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_auth_v1_auth_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDeletionRequestRequest.ProtoReflect.Descriptor instead.
+func (*GetDeletionRequestRequest) Descriptor() ([]byte, []int) {
+	return file_smarthire_auth_v1_auth_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetDeletionRequestRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type DeletionRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Id     string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	UserId string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// PENDING | COMPLETED | STUCK
+	Status           string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	ExpectedServices []string               `protobuf:"bytes,4,rep,name=expected_services,json=expectedServices,proto3" json:"expected_services,omitempty"`
+	PurgedServices   []string               `protobuf:"bytes,5,rep,name=purged_services,json=purgedServices,proto3" json:"purged_services,omitempty"`
+	RequestedAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=requested_at,json=requestedAt,proto3" json:"requested_at,omitempty"`
+	CompletedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *DeletionRequest) Reset() {
+	*x = DeletionRequest{}
+	mi := &file_smarthire_auth_v1_auth_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeletionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeletionRequest) ProtoMessage() {}
+
+func (x *DeletionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_auth_v1_auth_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeletionRequest.ProtoReflect.Descriptor instead.
+func (*DeletionRequest) Descriptor() ([]byte, []int) {
+	return file_smarthire_auth_v1_auth_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *DeletionRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DeletionRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *DeletionRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *DeletionRequest) GetExpectedServices() []string {
+	if x != nil {
+		return x.ExpectedServices
+	}
+	return nil
+}
+
+func (x *DeletionRequest) GetPurgedServices() []string {
+	if x != nil {
+		return x.PurgedServices
+	}
+	return nil
+}
+
+func (x *DeletionRequest) GetRequestedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RequestedAt
+	}
+	return nil
+}
+
+func (x *DeletionRequest) GetCompletedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return nil
+}
+
 var File_smarthire_auth_v1_auth_proto protoreflect.FileDescriptor
 
 const file_smarthire_auth_v1_auth_proto_rawDesc = "" +
@@ -519,19 +752,37 @@ const file_smarthire_auth_v1_auth_proto_rawDesc = "" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12+\n" +
 	"\x04role\x18\x03 \x01(\x0e2\x17.smarthire.auth.v1.RoleR\x04role\x129\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt*T\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"9\n" +
+	"\x0fDeleteMeRequest\x12&\n" +
+	"\bpassword\x18\x01 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x01R\bpassword\"Z\n" +
+	"\x10DeleteMeResponse\x12.\n" +
+	"\x13deletion_request_id\x18\x01 \x01(\tR\x11deletionRequestId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"5\n" +
+	"\x19GetDeletionRequestRequest\x12\x18\n" +
+	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\"\xa6\x02\n" +
+	"\x0fDeletionRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12+\n" +
+	"\x11expected_services\x18\x04 \x03(\tR\x10expectedServices\x12'\n" +
+	"\x0fpurged_services\x18\x05 \x03(\tR\x0epurgedServices\x12=\n" +
+	"\frequested_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\vrequestedAt\x12=\n" +
+	"\fcompleted_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt*T\n" +
 	"\x04Role\x12\x14\n" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eROLE_CANDIDATE\x10\x01\x12\x12\n" +
 	"\x0eROLE_RECRUITER\x10\x02\x12\x0e\n" +
 	"\n" +
-	"ROLE_ADMIN\x10\x032\xab\x03\n" +
+	"ROLE_ADMIN\x10\x032\xa6\x05\n" +
 	"\vAuthService\x12q\n" +
 	"\bRegister\x12\".smarthire.auth.v1.RegisterRequest\x1a#.smarthire.auth.v1.RegisterResponse\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/auth/register\x12F\n" +
 	"\x05Login\x12\x1f.smarthire.auth.v1.LoginRequest\x1a\x1c.smarthire.auth.v1.TokenPair\x12J\n" +
 	"\aRefresh\x12!.smarthire.auth.v1.RefreshRequest\x1a\x1c.smarthire.auth.v1.TokenPair\x12B\n" +
 	"\x06Logout\x12 .smarthire.auth.v1.LogoutRequest\x1a\x16.google.protobuf.Empty\x12Q\n" +
-	"\x05GetMe\x12\x1f.smarthire.auth.v1.GetMeRequest\x1a\x17.smarthire.auth.v1.User\"\x0e\x82\xd3\xe4\x93\x02\b\x12\x06/v1/meB\xcb\x01\n" +
+	"\x05GetMe\x12\x1f.smarthire.auth.v1.GetMeRequest\x1a\x17.smarthire.auth.v1.User\"\x0e\x82\xd3\xe4\x93\x02\b\x12\x06/v1/me\x12f\n" +
+	"\bDeleteMe\x12\".smarthire.auth.v1.DeleteMeRequest\x1a#.smarthire.auth.v1.DeleteMeResponse\"\x11\x82\xd3\xe4\x93\x02\v:\x01**\x06/v1/me\x12\x90\x01\n" +
+	"\x12GetDeletionRequest\x12,.smarthire.auth.v1.GetDeletionRequestRequest\x1a\".smarthire.auth.v1.DeletionRequest\"(\x82\xd3\xe4\x93\x02\"\x12 /v1/admin/deletion-requests/{id}B\xcb\x01\n" +
 	"\x15com.smarthire.auth.v1B\tAuthProtoP\x01ZAgithub.com/nuroqzavitex/smarthire/gen/go/smarthire/auth/v1;authv1\xa2\x02\x03SAX\xaa\x02\x11Smarthire.Auth.V1\xca\x02\x11Smarthire\\Auth\\V1\xe2\x02\x1dSmarthire\\Auth\\V1\\GPBMetadata\xea\x02\x13Smarthire::Auth::V1b\x06proto3"
 
 var (
@@ -547,39 +798,49 @@ func file_smarthire_auth_v1_auth_proto_rawDescGZIP() []byte {
 }
 
 var file_smarthire_auth_v1_auth_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_smarthire_auth_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_smarthire_auth_v1_auth_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_smarthire_auth_v1_auth_proto_goTypes = []any{
-	(Role)(0),                     // 0: smarthire.auth.v1.Role
-	(*RegisterRequest)(nil),       // 1: smarthire.auth.v1.RegisterRequest
-	(*RegisterResponse)(nil),      // 2: smarthire.auth.v1.RegisterResponse
-	(*LoginRequest)(nil),          // 3: smarthire.auth.v1.LoginRequest
-	(*RefreshRequest)(nil),        // 4: smarthire.auth.v1.RefreshRequest
-	(*LogoutRequest)(nil),         // 5: smarthire.auth.v1.LogoutRequest
-	(*TokenPair)(nil),             // 6: smarthire.auth.v1.TokenPair
-	(*GetMeRequest)(nil),          // 7: smarthire.auth.v1.GetMeRequest
-	(*User)(nil),                  // 8: smarthire.auth.v1.User
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),         // 10: google.protobuf.Empty
+	(Role)(0),                         // 0: smarthire.auth.v1.Role
+	(*RegisterRequest)(nil),           // 1: smarthire.auth.v1.RegisterRequest
+	(*RegisterResponse)(nil),          // 2: smarthire.auth.v1.RegisterResponse
+	(*LoginRequest)(nil),              // 3: smarthire.auth.v1.LoginRequest
+	(*RefreshRequest)(nil),            // 4: smarthire.auth.v1.RefreshRequest
+	(*LogoutRequest)(nil),             // 5: smarthire.auth.v1.LogoutRequest
+	(*TokenPair)(nil),                 // 6: smarthire.auth.v1.TokenPair
+	(*GetMeRequest)(nil),              // 7: smarthire.auth.v1.GetMeRequest
+	(*User)(nil),                      // 8: smarthire.auth.v1.User
+	(*DeleteMeRequest)(nil),           // 9: smarthire.auth.v1.DeleteMeRequest
+	(*DeleteMeResponse)(nil),          // 10: smarthire.auth.v1.DeleteMeResponse
+	(*GetDeletionRequestRequest)(nil), // 11: smarthire.auth.v1.GetDeletionRequestRequest
+	(*DeletionRequest)(nil),           // 12: smarthire.auth.v1.DeletionRequest
+	(*timestamppb.Timestamp)(nil),     // 13: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),             // 14: google.protobuf.Empty
 }
 var file_smarthire_auth_v1_auth_proto_depIdxs = []int32{
 	0,  // 0: smarthire.auth.v1.RegisterRequest.role:type_name -> smarthire.auth.v1.Role
 	0,  // 1: smarthire.auth.v1.User.role:type_name -> smarthire.auth.v1.Role
-	9,  // 2: smarthire.auth.v1.User.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 3: smarthire.auth.v1.AuthService.Register:input_type -> smarthire.auth.v1.RegisterRequest
-	3,  // 4: smarthire.auth.v1.AuthService.Login:input_type -> smarthire.auth.v1.LoginRequest
-	4,  // 5: smarthire.auth.v1.AuthService.Refresh:input_type -> smarthire.auth.v1.RefreshRequest
-	5,  // 6: smarthire.auth.v1.AuthService.Logout:input_type -> smarthire.auth.v1.LogoutRequest
-	7,  // 7: smarthire.auth.v1.AuthService.GetMe:input_type -> smarthire.auth.v1.GetMeRequest
-	2,  // 8: smarthire.auth.v1.AuthService.Register:output_type -> smarthire.auth.v1.RegisterResponse
-	6,  // 9: smarthire.auth.v1.AuthService.Login:output_type -> smarthire.auth.v1.TokenPair
-	6,  // 10: smarthire.auth.v1.AuthService.Refresh:output_type -> smarthire.auth.v1.TokenPair
-	10, // 11: smarthire.auth.v1.AuthService.Logout:output_type -> google.protobuf.Empty
-	8,  // 12: smarthire.auth.v1.AuthService.GetMe:output_type -> smarthire.auth.v1.User
-	8,  // [8:13] is the sub-list for method output_type
-	3,  // [3:8] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	13, // 2: smarthire.auth.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	13, // 3: smarthire.auth.v1.DeletionRequest.requested_at:type_name -> google.protobuf.Timestamp
+	13, // 4: smarthire.auth.v1.DeletionRequest.completed_at:type_name -> google.protobuf.Timestamp
+	1,  // 5: smarthire.auth.v1.AuthService.Register:input_type -> smarthire.auth.v1.RegisterRequest
+	3,  // 6: smarthire.auth.v1.AuthService.Login:input_type -> smarthire.auth.v1.LoginRequest
+	4,  // 7: smarthire.auth.v1.AuthService.Refresh:input_type -> smarthire.auth.v1.RefreshRequest
+	5,  // 8: smarthire.auth.v1.AuthService.Logout:input_type -> smarthire.auth.v1.LogoutRequest
+	7,  // 9: smarthire.auth.v1.AuthService.GetMe:input_type -> smarthire.auth.v1.GetMeRequest
+	9,  // 10: smarthire.auth.v1.AuthService.DeleteMe:input_type -> smarthire.auth.v1.DeleteMeRequest
+	11, // 11: smarthire.auth.v1.AuthService.GetDeletionRequest:input_type -> smarthire.auth.v1.GetDeletionRequestRequest
+	2,  // 12: smarthire.auth.v1.AuthService.Register:output_type -> smarthire.auth.v1.RegisterResponse
+	6,  // 13: smarthire.auth.v1.AuthService.Login:output_type -> smarthire.auth.v1.TokenPair
+	6,  // 14: smarthire.auth.v1.AuthService.Refresh:output_type -> smarthire.auth.v1.TokenPair
+	14, // 15: smarthire.auth.v1.AuthService.Logout:output_type -> google.protobuf.Empty
+	8,  // 16: smarthire.auth.v1.AuthService.GetMe:output_type -> smarthire.auth.v1.User
+	10, // 17: smarthire.auth.v1.AuthService.DeleteMe:output_type -> smarthire.auth.v1.DeleteMeResponse
+	12, // 18: smarthire.auth.v1.AuthService.GetDeletionRequest:output_type -> smarthire.auth.v1.DeletionRequest
+	12, // [12:19] is the sub-list for method output_type
+	5,  // [5:12] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_smarthire_auth_v1_auth_proto_init() }
@@ -593,7 +854,7 @@ func file_smarthire_auth_v1_auth_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_smarthire_auth_v1_auth_proto_rawDesc), len(file_smarthire_auth_v1_auth_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   8,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

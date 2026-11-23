@@ -34,6 +34,37 @@
     "application/json"
   ],
   "paths": {
+    "/v1/admin/deletion-requests/{id}": {
+      "get": {
+        "summary": "GetDeletionRequest shows which services confirmed a purge (admin only).",
+        "operationId": "AuthService_GetDeletionRequest",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DeletionRequest"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "AuthService"
+        ]
+      }
+    },
     "/v1/applications": {
       "get": {
         "summary": "Candidates see their own applications, recruiters those on their jobs.",
@@ -827,6 +858,37 @@
         "tags": [
           "AuthService"
         ]
+      },
+      "delete": {
+        "summary": "DeleteMe starts the account-deletion saga (ADR 0014): it re-checks the\npassword, marks the account DELETION_PENDING and answers 202.",
+        "operationId": "AuthService_DeleteMe",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DeleteMeResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1DeleteMeRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AuthService"
+        ]
       }
     },
     "/v1/me/jobs": {
@@ -1372,6 +1434,60 @@
           "type": "string"
         },
         "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "v1DeleteMeRequest": {
+      "type": "object",
+      "properties": {
+        "password": {
+          "type": "string"
+        }
+      }
+    },
+    "v1DeleteMeResponse": {
+      "type": "object",
+      "properties": {
+        "deletion_request_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      }
+    },
+    "v1DeletionRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "title": "PENDING | COMPLETED | STUCK"
+        },
+        "expected_services": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "purged_services": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "requested_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completed_at": {
           "type": "string",
           "format": "date-time"
         }

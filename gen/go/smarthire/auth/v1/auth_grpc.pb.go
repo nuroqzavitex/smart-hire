@@ -20,11 +20,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthService_Register_FullMethodName = "/smarthire.auth.v1.AuthService/Register"
-	AuthService_Login_FullMethodName    = "/smarthire.auth.v1.AuthService/Login"
-	AuthService_Refresh_FullMethodName  = "/smarthire.auth.v1.AuthService/Refresh"
-	AuthService_Logout_FullMethodName   = "/smarthire.auth.v1.AuthService/Logout"
-	AuthService_GetMe_FullMethodName    = "/smarthire.auth.v1.AuthService/GetMe"
+	AuthService_Register_FullMethodName           = "/smarthire.auth.v1.AuthService/Register"
+	AuthService_Login_FullMethodName              = "/smarthire.auth.v1.AuthService/Login"
+	AuthService_Refresh_FullMethodName            = "/smarthire.auth.v1.AuthService/Refresh"
+	AuthService_Logout_FullMethodName             = "/smarthire.auth.v1.AuthService/Logout"
+	AuthService_GetMe_FullMethodName              = "/smarthire.auth.v1.AuthService/GetMe"
+	AuthService_DeleteMe_FullMethodName           = "/smarthire.auth.v1.AuthService/DeleteMe"
+	AuthService_GetDeletionRequest_FullMethodName = "/smarthire.auth.v1.AuthService/GetDeletionRequest"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -36,6 +38,11 @@ type AuthServiceClient interface {
 	Refresh(ctx context.Context, in *RefreshRequest, opts ...grpc.CallOption) (*TokenPair, error)
 	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetMe(ctx context.Context, in *GetMeRequest, opts ...grpc.CallOption) (*User, error)
+	// DeleteMe starts the account-deletion saga (ADR 0014): it re-checks the
+	// password, marks the account DELETION_PENDING and answers 202.
+	DeleteMe(ctx context.Context, in *DeleteMeRequest, opts ...grpc.CallOption) (*DeleteMeResponse, error)
+	// GetDeletionRequest shows which services confirmed a purge (admin only).
+	GetDeletionRequest(ctx context.Context, in *GetDeletionRequestRequest, opts ...grpc.CallOption) (*DeletionRequest, error)
 }
 
 type authServiceClient struct {
@@ -96,6 +103,26 @@ func (c *authServiceClient) GetMe(ctx context.Context, in *GetMeRequest, opts ..
 	return out, nil
 }
 
+func (c *authServiceClient) DeleteMe(ctx context.Context, in *DeleteMeRequest, opts ...grpc.CallOption) (*DeleteMeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteMeResponse)
+	err := c.cc.Invoke(ctx, AuthService_DeleteMe_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) GetDeletionRequest(ctx context.Context, in *GetDeletionRequestRequest, opts ...grpc.CallOption) (*DeletionRequest, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeletionRequest)
+	err := c.cc.Invoke(ctx, AuthService_GetDeletionRequest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -105,6 +132,11 @@ type AuthServiceServer interface {
 	Refresh(context.Context, *RefreshRequest) (*TokenPair, error)
 	Logout(context.Context, *LogoutRequest) (*emptypb.Empty, error)
 	GetMe(context.Context, *GetMeRequest) (*User, error)
+	// DeleteMe starts the account-deletion saga (ADR 0014): it re-checks the
+	// password, marks the account DELETION_PENDING and answers 202.
+	DeleteMe(context.Context, *DeleteMeRequest) (*DeleteMeResponse, error)
+	// GetDeletionRequest shows which services confirmed a purge (admin only).
+	GetDeletionRequest(context.Context, *GetDeletionRequestRequest) (*DeletionRequest, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -129,6 +161,12 @@ func (UnimplementedAuthServiceServer) Logout(context.Context, *LogoutRequest) (*
 }
 func (UnimplementedAuthServiceServer) GetMe(context.Context, *GetMeRequest) (*User, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetMe not implemented")
+}
+func (UnimplementedAuthServiceServer) DeleteMe(context.Context, *DeleteMeRequest) (*DeleteMeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteMe not implemented")
+}
+func (UnimplementedAuthServiceServer) GetDeletionRequest(context.Context, *GetDeletionRequestRequest) (*DeletionRequest, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDeletionRequest not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -241,6 +279,42 @@ func _AuthService_GetMe_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_DeleteMe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteMeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).DeleteMe(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_DeleteMe_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).DeleteMe(ctx, req.(*DeleteMeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_GetDeletionRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDeletionRequestRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).GetDeletionRequest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_GetDeletionRequest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).GetDeletionRequest(ctx, req.(*GetDeletionRequestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -267,6 +341,14 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetMe",
 			Handler:    _AuthService_GetMe_Handler,
+		},
+		{
+			MethodName: "DeleteMe",
+			Handler:    _AuthService_DeleteMe_Handler,
+		},
+		{
+			MethodName: "GetDeletionRequest",
+			Handler:    _AuthService_GetDeletionRequest_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

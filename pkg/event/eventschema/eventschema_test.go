@@ -222,6 +222,7 @@ func TestValidate_CvUpdated(t *testing.T) {
 		{"cv_id": testUUID, "candidate_id": testUUID, "version": 3, "status": "PARSED", "parsed": parsed, "parsed_at": "2026-11-20T10:00:00Z"},
 		{"cv_id": testUUID, "candidate_id": testUUID, "version": 4, "status": "UPLOADED", "parsed": nil, "parsed_at": nil},
 		{"cv_id": testUUID, "candidate_id": testUUID, "version": 2, "status": "FAILED", "parsed": nil, "parsed_at": nil},
+		{"cv_id": testUUID, "candidate_id": testUUID, "version": 5, "status": "DELETED", "parsed": nil, "parsed_at": nil},
 	}
 	for _, p := range ok {
 		assert.NoError(t, eventschema.Validate("cv.updated", buildFrom(t, "candidate-service", "cv.updated", p)))
