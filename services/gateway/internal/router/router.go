@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	applicationv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/application/v1"
 	authv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/auth/v1"
 	candidatev1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/candidate/v1"
 	jobv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1"
@@ -39,6 +40,7 @@ type Deps struct {
 	AuthConn      *grpc.ClientConn
 	JobConn       *grpc.ClientConn
 	CandidateConn *grpc.ClientConn
+	AppConn       *grpc.ClientConn
 	Verifier      grpcx.TokenVerifier
 	Limiter       *ratelimit.Limiter
 	Cfg           config.Config
@@ -66,12 +68,16 @@ func ParseTrustedProxies(cidrs []string) ([]netip.Prefix, error) {
 	return out, nil
 }
 
-// incomingHeaderMatcher forwards only X-Request-ID. grpc-gateway itself always
-// forwards Authorization as "authorization"; matching it here too would send
-// the header twice.
+// incomingHeaderMatcher forwards only X-Request-ID and Idempotency-Key
+// (POST /v1/applications, ADR 0011). grpc-gateway itself always forwards
+// Authorization as "authorization"; matching it here too would send the
+// header twice.
 func incomingHeaderMatcher(key string) (string, bool) {
-	if strings.EqualFold(key, "x-request-id") {
+	switch {
+	case strings.EqualFold(key, "x-request-id"):
 		return "x-request-id", true
+	case strings.EqualFold(key, "idempotency-key"):
+		return "idempotency-key", true
 	}
 	return "", false
 }
@@ -124,6 +130,9 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 				w.WriteHeader(http.StatusCreated)
 			} else if method, _ := runtime.RPCMethod(ctx); method == jobv1.JobService_CreateJob_FullMethodName {
 				w.WriteHeader(http.StatusCreated)
+			} else if method == applicationv1.ApplicationService_SubmitApplication_FullMethodName {
+				// The saga continues in the background (ADR 0011).
+				w.WriteHeader(http.StatusAccepted)
 			}
 			return nil
 		}),
@@ -144,6 +153,10 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 		return nil, fmt.Errorf("register candidate gateway handler: %w", err)
 	}
 
+	if err := applicationv1.RegisterApplicationServiceHandlerClient(ctx, mux, applicationv1.NewApplicationServiceClient(d.AppConn)); err != nil {
+		return nil, fmt.Errorf("register application gateway handler: %w", err)
+	}
+
 	api := stripGRPCTimeout(http.MaxBytesHandler(mux, maxBodyBytes))
 	apiLarge := stripGRPCTimeout(http.MaxBytesHandler(mux, maxParsedBodyBytes))
 
@@ -161,7 +174,7 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 		cors.Handler(cors.Options{
 			AllowedOrigins:   d.Cfg.CORSOrigins,
 			AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions},
-			AllowedHeaders:   []string{"Authorization", "Content-Type", "X-Request-ID"},
+			AllowedHeaders:   []string{"Authorization", "Content-Type", "X-Request-ID", "Idempotency-Key"},
 			ExposedHeaders:   []string{"X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After"},
 			AllowCredentials: true,
 			MaxAge:           600,

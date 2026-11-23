@@ -1,5 +1,5 @@
 .PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job cover-candidate cover-application \
-	ai-sync ai-lint ai-test ai-test-int ai-cover minio-image opensearch-image infra-up obs-up up down down-v migrate seed smoke search-rebuild search-reconcile logs
+	ai-sync ai-lint ai-test ai-test-int ai-cover minio-image opensearch-image infra-up obs-up up down down-v migrate seed smoke chaos-ai db-init search-rebuild search-reconcile logs
 
 # Compose stack (deploy/docker), project name smarthire. Paths are absolute
 # and MSYS_NO_PATHCONV stops Git Bash on Windows from rewriting them.
@@ -134,6 +134,12 @@ up:
 		sleep 1; \
 	done; \
 	echo "candidate service did not become reachable"; $(COMPOSE) logs --tail=50 candidate gateway; exit 1
+	@echo "waiting for application service at $(GATEWAY_URL)/v1/applications"; \
+	for i in $$(seq 1 60); do \
+		test "$$(curl -s -o /dev/null -w '%{http_code}' $(GATEWAY_URL)/v1/applications)" = 401 && { echo "application service is up"; exit 0; }; \
+		sleep 1; \
+	done; \
+	echo "application service did not become reachable"; $(COMPOSE) logs --tail=50 application gateway; exit 1
 
 down:
 	$(COMPOSE) --profile tools down
@@ -143,10 +149,17 @@ down:
 down-v:
 	$(COMPOSE) --profile tools down -v
 
-# Re-runs the auth, job, candidate and ai migrations (the one-shot *-migrate containers).
+# Re-runs the auth, job, candidate, application and ai migrations (the one-shot *-migrate containers).
 migrate:
 	$(COMPOSE) run --rm auth-migrate && $(COMPOSE) run --rm job-migrate && \
-		$(COMPOSE) run --rm candidate-migrate && $(COMPOSE) run --rm ai-migrate
+		$(COMPOSE) run --rm candidate-migrate && $(COMPOSE) run --rm application-migrate && \
+		$(COMPOSE) run --rm ai-migrate
+
+# Postgres init scripts only run on a fresh volume: creates application_db
+# and its role on an existing one (idempotent).
+db-init:
+	$(COMPOSE) up -d --wait postgres
+	$(COMPOSE) exec -T postgres psql -U postgres -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/05-create-application-db.sql
 
 seed:
 	$(COMPOSE) run --rm auth-seed
@@ -163,6 +176,23 @@ search-reconcile:
 smoke:
 	go run ./tools/cmd/smoke -base $(GATEWAY_URL) -origin $(SMOKE_ORIGIN) -kafka $(KAFKA_ADDR)
 	$(COMPOSE) run --rm job-projector reconcile
+
+# M3 chaos run (ADR 0011): with ai-api stopped every application must end in
+# NEEDS_MANUAL_REVIEW and the application service's AI breaker must open.
+# ai-api is started again even when the run fails.
+chaos-ai:
+	$(COMPOSE) stop ai-api
+	@status=0; \
+	go run ./tools/cmd/smoke -chaos-ai -base $(GATEWAY_URL) -origin $(SMOKE_ORIGIN) -kafka $(KAFKA_ADDR) || status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		if $(COMPOSE) logs --since 10m application | grep 'circuit breaker state changed' | grep -q '"to":"open"'; then \
+			echo "PASS chaos: ai breaker opened"; \
+		else \
+			echo "FAIL chaos: ai breaker did not open"; status=1; \
+		fi; \
+	fi; \
+	$(COMPOSE) start ai-api; \
+	exit $$status
 
 logs:
 	$(COMPOSE) logs -f --tail=100

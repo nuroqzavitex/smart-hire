@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
+	applicationv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/application/v1"
 	authv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/auth/v1"
 	candidatev1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/candidate/v1"
 	jobv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1"
@@ -224,11 +225,31 @@ func (f *fakeCandidate) ListMyCVs(context.Context, *candidatev1.ListMyCVsRequest
 	return &candidatev1.ListMyCVsResponse{}, nil
 }
 
+type fakeApplication struct {
+	applicationv1.UnimplementedApplicationServiceServer
+	mu       sync.Mutex
+	submitMD metadata.MD
+}
+
+func (f *fakeApplication) SubmitApplication(ctx context.Context, r *applicationv1.SubmitApplicationRequest) (*applicationv1.Application, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.submitMD, _ = metadata.FromIncomingContext(ctx)
+	return &applicationv1.Application{Id: "a-1", JobId: r.GetJobId(), Status: applicationv1.ApplicationStatus_APPLICATION_STATUS_PENDING}, nil
+}
+
+func (f *fakeApplication) md() metadata.MD {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.submitMD
+}
+
 type env struct {
 	h    http.Handler
 	fake *fakeAuth
 	job  *fakeJob
 	cand *fakeCandidate
+	app  *fakeApplication
 	is   *authztest.KeyIssuer
 }
 
@@ -275,11 +296,23 @@ func setup(t *testing.T) *env {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cconn.Close() })
 
+	fa := &fakeApplication{}
+	alis := bufconn.Listen(1 << 20)
+	asrv, _ := grpcx.NewServer(grpcx.ServerConfig{Verifier: v, PublicMethods: []string{}})
+	applicationv1.RegisterApplicationServiceServer(asrv, fa)
+	go func() { _ = asrv.Serve(alis) }()
+	t.Cleanup(asrv.Stop)
+	aconn, err := grpcx.Dial("passthrough:///appbufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return alis.Dial() }))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = aconn.Close() })
+
 	h, err := router.New(t.Context(), router.Deps{
 		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		AuthConn:      conn,
 		JobConn:       jconn,
 		CandidateConn: cconn,
+		AppConn:       aconn,
 		Verifier:      v,
 		Limiter:       ratelimit.New(allowAll{}),
 		Cfg: config.Config{
@@ -289,7 +322,7 @@ func setup(t *testing.T) *env {
 		Ready: func(context.Context) error { return nil },
 	})
 	require.NoError(t, err)
-	return &env{h: h, fake: fake, job: fj, cand: fc, is: is}
+	return &env{h: h, fake: fake, job: fj, cand: fc, app: fa, is: is}
 }
 
 func (e *env) do(method, path, body string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -668,4 +701,25 @@ func TestConnsReady_ShutdownConnNotReady(t *testing.T) {
 	assert.NoError(t, router.ConnsReady(open)(t.Context()))
 	assert.Error(t, router.ConnsReady(open, closed)(t.Context()))
 	assert.Error(t, router.ConnsReady(open, nil)(t.Context()))
+}
+
+func TestRouter_SubmitApplicationForwardsKeyAndReturns202(t *testing.T) {
+	e := setup(t)
+	tok := e.is.Sign(t, "u-1", authz.RoleCandidate, time.Minute)
+	body := `{"job_id":"0b8f3c9e-6f1a-4c55-9a51-3c1f2e9b7d10","cv_id":"7d0c2a4e-1b9f-4e2a-8c3d-5f6a7b8c9d0e"}`
+	rec := e.do("POST", "/v1/applications", body, map[string]string{
+		"Content-Type": "application/json", "Authorization": "Bearer " + tok, "Idempotency-Key": "key-1",
+	})
+	require.Equal(t, 202, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"APPLICATION_STATUS_PENDING"`)
+	assert.Equal(t, []string{"key-1"}, e.app.md().Get("idempotency-key"))
+}
+
+func TestRouter_CORSAllowsIdempotencyKey(t *testing.T) {
+	e := setup(t)
+	rec := e.do("OPTIONS", "/v1/applications", "", map[string]string{
+		"Origin": origin, "Access-Control-Request-Method": "POST",
+		"Access-Control-Request-Headers": "idempotency-key,content-type",
+	})
+	assert.Contains(t, strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers")), "idempotency-key")
 }

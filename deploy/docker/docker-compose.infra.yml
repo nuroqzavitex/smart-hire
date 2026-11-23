@@ -12,6 +12,8 @@ services:
       CANDIDATE_DB_PASSWORD: ${CANDIDATE_DB_PASSWORD:?set CANDIDATE_DB_PASSWORD in .env}
       # Read by init/postgres/04-create-ai-db.sql (ai_svc role).
       AI_DB_PASSWORD: ${AI_DB_PASSWORD:?set AI_DB_PASSWORD in .env}
+      # Read by init/postgres/05-create-application-db.sql (application_svc role).
+      APPLICATION_DB_PASSWORD: ${APPLICATION_DB_PASSWORD:?set APPLICATION_DB_PASSWORD in .env}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init/postgres:/docker-entrypoint-initdb.d:ro

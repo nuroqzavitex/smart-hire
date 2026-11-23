@@ -43,6 +43,8 @@ jobs:
             candidate:
               - 'services/candidate/**'
               - 'deploy/docker/minio/**'
+            application:
+              - 'services/application/**'
             tools:
               - 'tools/**'
       # Changes in pkg/, gen/ (or the workspace) run every module.
@@ -54,6 +56,7 @@ jobs:
           GATEWAY: ${{ steps.filter.outputs.gateway }}
           JOB: ${{ steps.filter.outputs.job }}
           CANDIDATE: ${{ steps.filter.outputs.candidate }}
+          APPLICATION: ${{ steps.filter.outputs.application }}
           TOOLS: ${{ steps.filter.outputs.tools }}
         run: |
           mods=()
@@ -62,6 +65,7 @@ jobs:
           if [ "$SHARED" = "true" ] || [ "$GATEWAY" = "true" ]; then mods+=(services/gateway); fi
           if [ "$SHARED" = "true" ] || [ "$JOB" = "true" ]; then mods+=(services/job); fi
           if [ "$SHARED" = "true" ] || [ "$CANDIDATE" = "true" ]; then mods+=(services/candidate); fi
+          if [ "$SHARED" = "true" ] || [ "$APPLICATION" = "true" ]; then mods+=(services/application); fi
           if [ "$SHARED" = "true" ] || [ "$TOOLS" = "true" ]; then mods+=(tools); fi
           if [ ${#mods[@]} -eq 0 ]; then
             json='[]'
@@ -128,6 +132,9 @@ jobs:
       - name: Coverage gate (candidate)
         if: matrix.module == 'services/candidate'
         run: make cover-candidate
+      - name: Coverage gate (application)
+        if: matrix.module == 'services/application'
+        run: make cover-application
 
   docker:
     needs: changes
@@ -136,7 +143,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [auth, gateway, job, candidate]
+        service: [auth, gateway, job, candidate, application]
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v4

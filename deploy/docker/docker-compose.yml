@@ -148,6 +148,8 @@ services:
       CANDIDATE_LOG_LEVEL: info
       CANDIDATE_AI_ADDR: ai-api:9100
       CANDIDATE_JOB_ADDR: job:9002
+      # Dev quota, large enough for repeated smoke and chaos runs.
+      CANDIDATE_DAILY_APPLICATION_QUOTA: 50
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
       candidate-migrate:
@@ -248,6 +250,45 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  application-migrate:
+    image: migrate/migrate:v4.18.3
+    command:
+      - -path=/migrations
+      - -database=postgres://application_svc:${APPLICATION_DB_PASSWORD:?set APPLICATION_DB_PASSWORD in .env}@postgres:5432/application_db?sslmode=disable
+      - up
+    volumes:
+      - ../../services/application/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # Application service + submit saga worker (ADR 0011).
+  application:
+    build:
+      context: ../..
+      dockerfile: services/application/Dockerfile
+    image: smarthire/application:dev
+    environment:
+      APPLICATION_DB_DSN: postgres://application_svc:${APPLICATION_DB_PASSWORD:?set APPLICATION_DB_PASSWORD in .env}@postgres:5432/application_db?sslmode=disable
+      APPLICATION_JWKS_URL: http://auth:8001/.well-known/jwks.json
+      APPLICATION_KAFKA_BROKERS: redpanda:9092
+      APPLICATION_JOB_ADDR: job:9002
+      APPLICATION_CANDIDATE_ADDR: candidate:9003
+      APPLICATION_AI_ADDR: ai-api:9100
+      APPLICATION_LOG_LEVEL: info
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      application-migrate:
+        condition: service_completed_successfully
+      topics-init:
+        condition: service_completed_successfully
+      auth:
+        condition: service_started
+    # Distroless image: no shell for a healthcheck; `make up` waits on
+    # GET /v1/applications through the gateway.
+    restart: unless-stopped
+
   gateway:
     build:
       context: ../..
@@ -257,6 +298,7 @@ services:
       GATEWAY_AUTH_GRPC_ADDR: auth:9001
       GATEWAY_JOB_GRPC_ADDR: job:9002
       GATEWAY_CANDIDATE_GRPC_ADDR: candidate:9003
+      GATEWAY_APPLICATION_GRPC_ADDR: application:9004
       GATEWAY_AUTH_JWKS_URL: http://auth:8001/.well-known/jwks.json
       GATEWAY_REDIS_ADDR: redis:6379
       GATEWAY_COOKIE_SECURE: "false"
@@ -271,6 +313,8 @@ services:
       job:
         condition: service_started
       candidate:
+        condition: service_started
+      application:
         condition: service_started
       redis:
         condition: service_healthy
