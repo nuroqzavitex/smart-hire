@@ -21,6 +21,7 @@ Mỗi ADR ghi một quyết định kiến trúc theo khuôn: **Context / Decisi
 | [0011](0011-application-saga-orchestration.md) | Nộp đơn bằng Saga orchestration tự viết — worker quét bảng, lease, version guard | M3 |
 | [0012](0012-notification-ws-ticket-email-outbox.md) | Notification — bản sao cục bộ, email outbox, WebSocket qua gateway bằng ticket | M4a |
 | [0013](0013-telemetry-through-otel-collector.md) | Metrics và log đi qua OTel collector tới Prometheus và Loki | M4a |
+| [0014](0014-account-deletion-choreography.md) | Xoá tài khoản bằng saga choreography — Auth chỉ theo dõi, mỗi service tự purge | M4b |
 
 ## Chủ đề dự kiến (chưa có số)
 
@@ -28,5 +29,4 @@ Các chủ đề trong `spec.md` §10, nhận số khi milestone tương ứng v
 
 - `grpc-for-sync`
 - `outbox-pattern`
-- `account-deletion-choreography`
 - `when-not-to-use-saga`

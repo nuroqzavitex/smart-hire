@@ -58,3 +58,13 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "Emails were given up after all retries"
+
+      # Account deletion (ADR 0014): Auth flags a request STUCK when not every
+      # service confirmed its purge within 24h. Runbook:
+      # docs/runbooks/account-deletion-stuck.md
+      - alert: AccountDeletionStuck
+        expr: max(account_deletions{status="STUCK"}) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $value }} account deletion(s) still miss purge confirmations after 24h"
+          runbook: docs/runbooks/account-deletion-stuck.md

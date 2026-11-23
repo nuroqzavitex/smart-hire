@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -160,8 +161,13 @@ func (s *smoke) markRead(access, id string) error {
 	if err := s.getJSON("/v1/notifications?unread_only=true", access, http.StatusOK, &after); err != nil {
 		return err
 	}
-	if after.UnreadCount != before.UnreadCount-1 {
-		return fmt.Errorf("unread %d -> %d", before.UnreadCount, after.UnreadCount)
+	// Compare the lists, not the counts: another notification of the same
+	// user may arrive between the two reads.
+	if !slices.ContainsFunc(before.Notifications, func(x smokeNotification) bool { return x.ID == id }) {
+		return fmt.Errorf("notification %s was not in the unread list", id)
+	}
+	if slices.ContainsFunc(after.Notifications, func(x smokeNotification) bool { return x.ID == id }) {
+		return fmt.Errorf("notification %s still unread (unread %d -> %d)", id, before.UnreadCount, after.UnreadCount)
 	}
 	return nil
 }

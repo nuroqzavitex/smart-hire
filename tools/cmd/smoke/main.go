@@ -44,6 +44,10 @@ type smoke struct {
 	candidateEmail    string
 	candidatePassword string
 
+	// admin reads deletion requests (proof of an account deletion).
+	adminEmail    string
+	adminPassword string
+
 	// tokens caches access tokens by email (accessFor).
 	tokens map[string]string
 }
@@ -68,6 +72,8 @@ func main() {
 	recruiterPassword := flag.String("recruiter-password", "Password123!", "seeded recruiter password")
 	candidateEmail := flag.String("candidate-email", "candidate@smarthire.local", "seeded candidate email")
 	candidatePassword := flag.String("candidate-password", "Password123!", "seeded candidate password")
+	adminEmail := flag.String("admin-email", envOr("SEED_ADMIN_EMAIL", "admin@smarthire.local"), "seeded admin email")
+	adminPassword := flag.String("admin-password", envOr("SEED_ADMIN_PASSWORD", "Admin-Password-123!"), "seeded admin password")
 	chaosAI := flag.Bool("chaos-ai", false, "run only the AI-outage scenario (expects ai-api to be stopped)")
 	flag.Parse()
 
@@ -80,6 +86,8 @@ func main() {
 		recruiterPassword: *recruiterPassword,
 		candidateEmail:    *candidateEmail,
 		candidatePassword: *candidatePassword,
+		adminEmail:        *adminEmail,
+		adminPassword:     *adminPassword,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -95,6 +103,14 @@ func main() {
 	if err := run(); err != nil {
 		os.Exit(1)
 	}
+}
+
+// envOr returns the environment variable key, or def when it is unset.
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 // step prints PASS/FAIL for one step and returns its error.
@@ -127,6 +143,7 @@ func (s *smoke) run() error {
 	steps = append(steps, s.cvSteps()...)
 	steps = append(steps, s.matchingSteps()...)
 	steps = append(steps, s.applicationSteps()...)
+	steps = append(steps, s.deletionSteps()...)
 	return runSteps(steps)
 }
 
@@ -226,7 +243,14 @@ func (s *smoke) accessFor(email, password string) (string, error) {
 	if tok, ok := s.tokens[email]; ok {
 		return tok, nil
 	}
-	tok, _, err := s.loginAs(email, password)
+	var tok string
+	var err error
+	for range 4 {
+		if tok, _, err = s.loginAs(email, password); err == nil || !strings.Contains(err.Error(), "status 429") {
+			break
+		}
+		time.Sleep(20 * time.Second) // wait out the per-IP login limit
+	}
 	if err != nil {
 		return "", err
 	}

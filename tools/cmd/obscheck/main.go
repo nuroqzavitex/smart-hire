@@ -24,10 +24,11 @@ var metrics = []string{
 	"kafka_consumer_lag",
 	"rpc_server_call_duration_seconds_count",
 	"notifications_created_total",
+	"account_deletions",
 }
 
 // alertRules is how many rules deploy/docker/prometheus/rules defines.
-const alertRules = 7
+const alertRules = 8
 
 type check struct {
 	name string

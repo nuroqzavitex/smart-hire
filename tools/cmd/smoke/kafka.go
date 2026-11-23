@@ -12,6 +12,12 @@ import (
 // waitForKey reads topic from the beginning (no consumer group) until it sees
 // a record with the given key, or fails after 10s.
 func waitForKey(ctx context.Context, broker, topic, key string) error {
+	return waitForKeyCount(ctx, broker, topic, key, 1)
+}
+
+// waitForKeyCount reads topic from the beginning until it saw want records
+// with the given key, or fails after 10s.
+func waitForKeyCount(ctx context.Context, broker, topic, key string, want int) error {
 	if key == "" {
 		return errors.New("empty key")
 	}
@@ -28,10 +34,11 @@ func waitForKey(ctx context.Context, broker, topic, key string) error {
 	}
 	defer cl.Close()
 
+	seen := 0
 	for {
 		fetches := cl.PollFetches(ctx)
 		if ctx.Err() != nil {
-			return fmt.Errorf("key %s not found on %s within 10s", key, topic)
+			return fmt.Errorf("%d of %d records with key %s on %s within 10s", seen, want, key, topic)
 		}
 		var ferr error
 		fetches.EachError(func(t string, p int32, err error) {
@@ -42,13 +49,12 @@ func waitForKey(ctx context.Context, broker, topic, key string) error {
 		if ferr != nil {
 			return ferr
 		}
-		found := false
 		fetches.EachRecord(func(r *kgo.Record) {
 			if string(r.Key) == key {
-				found = true
+				seen++
 			}
 		})
-		if found {
+		if seen >= want {
 			return nil
 		}
 	}
