@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"sync"
 	"testing"
@@ -17,6 +18,8 @@ import (
 	"github.com/nuroqzavitex/smarthire/services/application/internal/app"
 	"github.com/nuroqzavitex/smarthire/services/application/internal/domain"
 )
+
+var errBoom = errors.New("boom")
 
 var t0 = time.Date(2026, 11, 23, 9, 0, 0, 0, time.UTC)
 
@@ -130,6 +133,8 @@ func (f *fakeApps) History(_ context.Context, id uuid.UUID) ([]domain.HistoryEnt
 
 type fakeSagas struct {
 	m map[uuid.UUID]domain.Saga // by application id
+	// onClaim runs at the end of every Claim.
+	onClaim func()
 }
 
 func (f *fakeSagas) Create(_ context.Context, s domain.Saga) error {
@@ -153,6 +158,9 @@ func (f *fakeSagas) Claim(_ context.Context, now time.Time, lease time.Duration,
 		due[i].Attempts++
 		due[i].Version++
 		f.m[due[i].ApplicationID] = due[i]
+	}
+	if f.onClaim != nil {
+		f.onClaim()
 	}
 	return due, nil
 }
@@ -277,6 +285,9 @@ func (f *fakeCVs) GetCV(_ context.Context, id uuid.UUID) (app.CVInfo, error) {
 }
 
 type fakeQuota struct {
+	// onReserve runs inside Reserve (simulates something happening while
+	// the call is in flight).
+	onReserve  func()
 	reserveErr error
 	releaseErr error
 	reserved   []uuid.UUID
@@ -285,6 +296,9 @@ type fakeQuota struct {
 
 func (f *fakeQuota) Reserve(_ context.Context, appID, _ uuid.UUID) error {
 	f.reserved = append(f.reserved, appID)
+	if f.onReserve != nil {
+		f.onReserve()
+	}
 	return f.reserveErr
 }
 
