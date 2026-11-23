@@ -10,6 +10,18 @@ import (
 	"github.com/google/uuid"
 )
 
+type DeletionRequest struct {
+	ID               uuid.UUID
+	UserID           uuid.UUID
+	Role             string
+	Status           string
+	ExpectedServices []string
+	PurgedServices   []string
+	RequestedAt      time.Time
+	LastPublishedAt  time.Time
+	CompletedAt      *time.Time
+}
+
 type Outbox struct {
 	ID          uuid.UUID
 	AggregateID string
@@ -18,6 +30,11 @@ type Outbox struct {
 	CreatedAt   time.Time
 	PublishedAt *time.Time
 	Headers     []byte
+}
+
+type ProcessedEvent struct {
+	EventID     string
+	ProcessedAt time.Time
 }
 
 type RefreshToken struct {

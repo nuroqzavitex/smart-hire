@@ -71,6 +71,10 @@ func (c cancelAfterCreate) Revoke(ctx context.Context, id uuid.UUID, at time.Tim
 	return c.inner.Revoke(ctx, id, at, by)
 }
 
+func (c cancelAfterCreate) RevokeAllForUser(ctx context.Context, user uuid.UUID, at time.Time) error {
+	return c.inner.RevokeAllForUser(ctx, user, at)
+}
+
 func (c cancelAfterCreate) RevokeFamily(ctx context.Context, fam uuid.UUID, at time.Time) error {
 	return c.inner.RevokeFamily(ctx, fam, at)
 }
@@ -92,10 +96,10 @@ func login(t *testing.T, svc *app.Service) app.TokenPair {
 	return p
 }
 
-func count(t *testing.T, q string) int {
+func count(t *testing.T, q string, args ...any) int {
 	t.Helper()
 	var n int
-	require.NoError(t, pool.QueryRow(context.Background(), q).Scan(&n))
+	require.NoError(t, pool.QueryRow(context.Background(), q, args...).Scan(&n))
 	return n
 }
 

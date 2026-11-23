@@ -64,3 +64,14 @@ func (r *RefreshTokenRepo) RevokeFamily(ctx context.Context, familyID uuid.UUID,
 	}
 	return nil
 }
+
+// RevokeAllForUser revokes every live refresh token of the user.
+func (r *RefreshTokenRepo) RevokeAllForUser(ctx context.Context, userID uuid.UUID, at time.Time) error {
+	err := queries(ctx, r.pool).RevokeUserRefreshTokens(ctx, sqlc.RevokeUserRefreshTokensParams{
+		UserID: userID, RevokedAt: &at,
+	})
+	if err != nil {
+		return fmt.Errorf("revoke user refresh tokens: %w", err)
+	}
+	return nil
+}

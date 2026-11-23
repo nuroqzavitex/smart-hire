@@ -13,15 +13,22 @@ import (
 
 // Deps are the collaborators of Service.
 type Deps struct {
-	Users      UserRepo
-	Tokens     RefreshTokenRepo
-	Outbox     OutboxWriter
-	Tx         TxManager
-	Hasher     PasswordHasher
-	Issuer     TokenIssuer
-	Now        func() time.Time
-	RefreshTTL time.Duration
-	Logger     *slog.Logger
+	Users  UserRepo
+	Tokens RefreshTokenRepo
+	Outbox OutboxWriter
+	Tx     TxManager
+	Hasher PasswordHasher
+	Issuer TokenIssuer
+	// Deletions and Idem back the account-deletion saga (ADR 0014).
+	Deletions DeletionRepo
+	Idem      Idempotency
+	// DeletionRepublishAfter re-sends user.deleted for unfinished requests;
+	// DeletionStuckAfter flags a PENDING request as STUCK.
+	DeletionRepublishAfter time.Duration
+	DeletionStuckAfter     time.Duration
+	Now                    func() time.Time
+	RefreshTTL             time.Duration
+	Logger                 *slog.Logger
 }
 
 // Service implements the auth use cases.

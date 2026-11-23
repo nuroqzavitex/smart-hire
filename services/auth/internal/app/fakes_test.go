@@ -37,8 +37,9 @@ func (f fakeTx) WithTx(ctx context.Context, fn func(ctx context.Context) error) 
 }
 
 type fakeUsers struct {
-	mu      sync.Mutex
-	byEmail map[string]domain.User
+	mu          sync.Mutex
+	byEmail     map[string]domain.User
+	hardDeleted []uuid.UUID
 }
 
 func newFakeUsers() *fakeUsers { return &fakeUsers{byEmail: map[string]domain.User{}} }
@@ -213,4 +214,148 @@ func (fakeIssuer) IssueAccess(u domain.User, _ time.Time) (string, time.Duration
 func sha256Sum(s string) []byte {
 	h := sha256.Sum256([]byte(s))
 	return h[:]
+}
+
+// --- account deletion (M4b) ---
+
+func (f *fakeUsers) SetStatus(_ context.Context, id uuid.UUID, s domain.UserStatus, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for k, u := range f.byEmail {
+		if u.ID == id {
+			u.Status, u.UpdatedAt = s, at
+			f.byEmail[k] = u
+			return nil
+		}
+	}
+	return apperr.New(apperr.ErrNotFound, "user not found")
+}
+
+func (f *fakeUsers) HardDelete(_ context.Context, id uuid.UUID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for k, u := range f.byEmail {
+		if u.ID == id {
+			delete(f.byEmail, k)
+		}
+	}
+	f.hardDeleted = append(f.hardDeleted, id)
+	return nil
+}
+
+func (f *fakeTokens) RevokeAllForUser(_ context.Context, userID uuid.UUID, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.list {
+		if f.list[i].UserID == userID && f.list[i].RevokedAt == nil {
+			f.list[i].RevokedAt = &at
+		}
+	}
+	return nil
+}
+
+type fakeIdem struct{ seen map[string]bool }
+
+func (f *fakeIdem) Once(_ context.Context, id string) (bool, error) {
+	if f.seen[id] {
+		return false, nil
+	}
+	f.seen[id] = true
+	return true, nil
+}
+
+type fakeDeletions struct {
+	mu           sync.Mutex
+	byID         map[uuid.UUID]domain.DeletionRequest
+	beforeCreate func()
+}
+
+func newFakeDeletions() *fakeDeletions {
+	return &fakeDeletions{byID: map[uuid.UUID]domain.DeletionRequest{}}
+}
+
+func (f *fakeDeletions) put(r domain.DeletionRequest) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.byID[r.ID] = r
+}
+
+func (f *fakeDeletions) get(id uuid.UUID) domain.DeletionRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.byID[id]
+}
+
+func (f *fakeDeletions) Create(_ context.Context, r domain.DeletionRequest) error {
+	if f.beforeCreate != nil {
+		f.beforeCreate()
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, o := range f.byID {
+		if o.UserID == r.UserID && o.Status != domain.DeletionCompleted {
+			return apperr.New(apperr.ErrConflict, "deletion already requested")
+		}
+	}
+	f.byID[r.ID] = r
+	return nil
+}
+
+func (f *fakeDeletions) GetActiveByUser(_ context.Context, userID uuid.UUID) (domain.DeletionRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, o := range f.byID {
+		if o.UserID == userID && o.Status != domain.DeletionCompleted {
+			return o, nil
+		}
+	}
+	return domain.DeletionRequest{}, domain.ErrDeletionNotFound
+}
+
+func (f *fakeDeletions) Get(_ context.Context, id uuid.UUID) (domain.DeletionRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r, ok := f.byID[id]
+	if !ok {
+		return domain.DeletionRequest{}, domain.ErrDeletionNotFound
+	}
+	return r, nil
+}
+
+func (f *fakeDeletions) GetForUpdate(ctx context.Context, id uuid.UUID) (domain.DeletionRequest, error) {
+	return f.Get(ctx, id)
+}
+
+func (f *fakeDeletions) Update(_ context.Context, r domain.DeletionRequest) error {
+	f.put(r)
+	return nil
+}
+
+func (f *fakeDeletions) ClaimSweep(_ context.Context, republishBefore, stuckBefore time.Time, limit int) ([]domain.DeletionRequest, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.DeletionRequest
+	for _, r := range f.byID {
+		if r.Status == domain.DeletionCompleted {
+			continue
+		}
+		if r.LastPublishedAt.Before(republishBefore) ||
+			(r.Status == domain.DeletionPending && r.RequestedAt.Before(stuckBefore)) {
+			out = append(out, r)
+		}
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (f *fakeDeletions) CountByStatus(_ context.Context) (map[domain.DeletionStatus]int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[domain.DeletionStatus]int64{}
+	for _, r := range f.byID {
+		out[r.Status]++
+	}
+	return out, nil
 }

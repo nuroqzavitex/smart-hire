@@ -87,3 +87,17 @@ func (q *Queries) RevokeRefreshTokenFamily(ctx context.Context, arg RevokeRefres
 	_, err := q.db.Exec(ctx, revokeRefreshTokenFamily, arg.FamilyID, arg.RevokedAt)
 	return err
 }
+
+const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :exec
+UPDATE refresh_tokens SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL
+`
+
+type RevokeUserRefreshTokensParams struct {
+	UserID    uuid.UUID
+	RevokedAt *time.Time
+}
+
+func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, arg RevokeUserRefreshTokensParams) error {
+	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, arg.UserID, arg.RevokedAt)
+	return err
+}

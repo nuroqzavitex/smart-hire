@@ -47,6 +47,60 @@ func (u *users) GetByID(_ context.Context, id uuid.UUID) (domain.User, error) {
 	return domain.User{}, apperr.New(apperr.ErrNotFound, "user not found")
 }
 
+func (u *users) SetStatus(_ context.Context, id uuid.UUID, st domain.UserStatus, _ time.Time) error {
+	x := u.byID[id]
+	x.Status = st
+	u.byID[id] = x
+	return nil
+}
+
+func (u *users) HardDelete(_ context.Context, id uuid.UUID) error {
+	delete(u.byID, id)
+	return nil
+}
+
+type deletions struct {
+	byID map[uuid.UUID]domain.DeletionRequest
+}
+
+func (d *deletions) Create(_ context.Context, r domain.DeletionRequest) error {
+	d.byID[r.ID] = r
+	return nil
+}
+
+func (d *deletions) GetActiveByUser(_ context.Context, user uuid.UUID) (domain.DeletionRequest, error) {
+	for _, r := range d.byID {
+		if r.UserID == user && r.Status != domain.DeletionCompleted {
+			return r, nil
+		}
+	}
+	return domain.DeletionRequest{}, domain.ErrDeletionNotFound
+}
+
+func (d *deletions) Get(_ context.Context, id uuid.UUID) (domain.DeletionRequest, error) {
+	if r, ok := d.byID[id]; ok {
+		return r, nil
+	}
+	return domain.DeletionRequest{}, domain.ErrDeletionNotFound
+}
+
+func (d *deletions) GetForUpdate(ctx context.Context, id uuid.UUID) (domain.DeletionRequest, error) {
+	return d.Get(ctx, id)
+}
+
+func (d *deletions) Update(_ context.Context, r domain.DeletionRequest) error {
+	d.byID[r.ID] = r
+	return nil
+}
+
+func (d *deletions) ClaimSweep(context.Context, time.Time, time.Time, int) ([]domain.DeletionRequest, error) {
+	return nil, nil
+}
+
+func (d *deletions) CountByStatus(context.Context) (map[domain.DeletionStatus]int64, error) {
+	return nil, nil
+}
+
 // tokens stores only Create; other methods report "not found".
 type tokens struct{}
 
@@ -56,6 +110,7 @@ func (tokens) GetByHashForUpdate(context.Context, []byte) (domain.RefreshToken, 
 }
 func (tokens) Revoke(context.Context, uuid.UUID, time.Time, *uuid.UUID) error { return nil }
 func (tokens) RevokeFamily(context.Context, uuid.UUID, time.Time) error       { return nil }
+func (tokens) RevokeAllForUser(context.Context, uuid.UUID, time.Time) error   { return nil }
 
 type outbox struct{}
 
@@ -77,7 +132,8 @@ func newHandler(t *testing.T) (authv1.AuthServiceServer, *users) {
 	us := &users{byID: map[uuid.UUID]domain.User{}}
 	svc, err := app.NewService(app.Deps{
 		Users: us, Tokens: tokens{}, Outbox: outbox{}, Tx: tx{}, Hasher: hasher{}, Issuer: issuer{},
-		Now: time.Now, RefreshTTL: time.Hour, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Deletions: &deletions{byID: map[uuid.UUID]domain.DeletionRequest{}},
+		Now:       time.Now, RefreshTTL: time.Hour, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	require.NoError(t, err)
 	return authgrpc.NewHandler(svc), us
@@ -148,4 +204,35 @@ func TestPublicMethods(t *testing.T) {
 		"/smarthire.auth.v1.AuthService/Refresh",
 		"/smarthire.auth.v1.AuthService/Logout",
 	}, authgrpc.PublicMethods)
+}
+
+func TestGRPCHandler_DeleteMeAndAdminView(t *testing.T) {
+	h, us := newHandler(t)
+	uid := uuid.New()
+	us.byID[uid] = domain.User{ID: uid, Email: "a@b.co", PasswordHash: "h:pw", Role: authz.RoleCandidate, Status: domain.StatusActive}
+
+	_, err := h.DeleteMe(context.Background(), &authv1.DeleteMeRequest{Password: "pw"})
+	assert.ErrorIs(t, err, apperr.ErrUnauthenticated, "needs claims")
+
+	ctx := authz.WithClaims(context.Background(), authz.Claims{Subject: uid.String(), Role: authz.RoleCandidate})
+	_, err = h.DeleteMe(ctx, &authv1.DeleteMeRequest{Password: "bad"})
+	assert.ErrorIs(t, err, domain.ErrInvalidPassword)
+
+	resp, err := h.DeleteMe(ctx, &authv1.DeleteMeRequest{Password: "pw"})
+	require.NoError(t, err)
+	assert.Equal(t, "PENDING", resp.GetStatus())
+	assert.Equal(t, domain.StatusDeletionPending, us.byID[uid].Status)
+
+	admin := authz.WithClaims(context.Background(), authz.Claims{Subject: uuid.NewString(), Role: authz.RoleAdmin})
+	got, err := h.GetDeletionRequest(admin, &authv1.GetDeletionRequestRequest{Id: resp.GetDeletionRequestId()})
+	require.NoError(t, err)
+	assert.Equal(t, uid.String(), got.GetUserId())
+	assert.Equal(t, "PENDING", got.GetStatus())
+	assert.Len(t, got.GetExpectedServices(), 5)
+	assert.Empty(t, got.GetPurgedServices())
+	assert.NotNil(t, got.GetRequestedAt())
+	assert.Nil(t, got.GetCompletedAt())
+
+	_, err = h.GetDeletionRequest(admin, &authv1.GetDeletionRequestRequest{Id: "nope"})
+	assert.ErrorIs(t, err, apperr.ErrValidation)
 }

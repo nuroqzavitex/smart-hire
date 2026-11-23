@@ -40,6 +40,25 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	return err
 }
 
+const deleteUser = `-- name: DeleteUser :exec
+DELETE FROM users WHERE id = $1
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUser, id)
+	return err
+}
+
+const deleteUserRegisteredOutbox = `-- name: DeleteUserRegisteredOutbox :exec
+DELETE FROM outbox WHERE aggregate_id = $1::text AND event_type = 'user.registered'
+`
+
+// user.registered carries the email; drop it with the account (ADR 0014).
+func (q *Queries) DeleteUserRegisteredOutbox(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, deleteUserRegisteredOutbox, userID)
+	return err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, email, password_hash, role, status, created_at, updated_at
 FROM users WHERE email = $1
@@ -78,4 +97,22 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const setUserStatus = `-- name: SetUserStatus :execrows
+UPDATE users SET status = $2, updated_at = $3 WHERE id = $1
+`
+
+type SetUserStatusParams struct {
+	ID        uuid.UUID
+	Status    string
+	UpdatedAt time.Time
+}
+
+func (q *Queries) SetUserStatus(ctx context.Context, arg SetUserStatusParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUserStatus, arg.ID, arg.Status, arg.UpdatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

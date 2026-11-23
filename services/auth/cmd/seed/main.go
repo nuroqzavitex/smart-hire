@@ -51,7 +51,7 @@ func run() error {
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	// The issuer is unused by CreateUser, so none is supplied.
-	svc, err := bootstrap.NewService(pool, crypto.NewHasher(core.Argon2Params()), nil, 0, log)
+	svc, err := bootstrap.NewService(pool, crypto.NewHasher(core.Argon2Params()), nil, 0, bootstrap.DeletionTiming{}, log)
 	if err != nil {
 		return err
 	}

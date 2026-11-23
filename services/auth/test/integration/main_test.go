@@ -84,7 +84,7 @@ func run(m *testing.M) int {
 
 func truncate(t *testing.T) {
 	t.Helper()
-	if _, err := pool.Exec(context.Background(), `TRUNCATE users, refresh_tokens, outbox CASCADE`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE users, refresh_tokens, outbox, deletion_requests, processed_events CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -102,15 +102,19 @@ func newServiceWithTokens(t *testing.T, tokens app.RefreshTokenRepo) *app.Servic
 func newServiceWith(t *testing.T, tokens app.RefreshTokenRepo, outbox app.OutboxWriter) *app.Service {
 	t.Helper()
 	svc, err := app.NewService(app.Deps{
-		Users:      postgres.NewUserRepo(pool),
-		Tokens:     tokens,
-		Outbox:     outbox,
-		Tx:         postgres.NewTxManager(pool),
-		Hasher:     fastHasher{},
-		Issuer:     fakeIssuer{},
-		Now:        time.Now,
-		RefreshTTL: 7 * 24 * time.Hour,
-		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Users:                  postgres.NewUserRepo(pool),
+		Tokens:                 tokens,
+		Outbox:                 outbox,
+		Tx:                     postgres.NewTxManager(pool),
+		Deletions:              postgres.NewDeletionRepo(pool),
+		Idem:                   postgres.NewIdempotency(pool),
+		DeletionRepublishAfter: 15 * time.Minute,
+		DeletionStuckAfter:     24 * time.Hour,
+		Hasher:                 fastHasher{},
+		Issuer:                 fakeIssuer{},
+		Now:                    time.Now,
+		RefreshTTL:             7 * 24 * time.Hour,
+		Logger:                 slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	if err != nil {
 		t.Fatal(err)

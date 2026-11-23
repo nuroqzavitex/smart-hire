@@ -11,3 +11,6 @@ UPDATE refresh_tokens SET revoked_at = $2, replaced_by = $3 WHERE id = $1;
 
 -- name: RevokeRefreshTokenFamily :exec
 UPDATE refresh_tokens SET revoked_at = $2 WHERE family_id = $1 AND revoked_at IS NULL;
+
+-- name: RevokeUserRefreshTokens :exec
+UPDATE refresh_tokens SET revoked_at = $2 WHERE user_id = $1 AND revoked_at IS NULL;

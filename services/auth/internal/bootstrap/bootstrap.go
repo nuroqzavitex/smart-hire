@@ -22,6 +22,7 @@ import (
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
 	"github.com/nuroqzavitex/smarthire/pkg/otel"
 	"github.com/nuroqzavitex/smarthire/pkg/outbox"
+	"github.com/nuroqzavitex/smarthire/services/auth/internal/adapter/consumer"
 	"github.com/nuroqzavitex/smarthire/services/auth/internal/adapter/crypto"
 	authgrpc "github.com/nuroqzavitex/smarthire/services/auth/internal/adapter/grpc"
 	"github.com/nuroqzavitex/smarthire/services/auth/internal/adapter/httpx"
@@ -46,21 +47,52 @@ func ParseLevel(s string) slog.Level {
 	return l
 }
 
+// DeletionTiming configures the account-deletion tracker (ADR 0014).
+type DeletionTiming struct {
+	RepublishAfter time.Duration
+	StuckAfter     time.Duration
+}
+
 // NewService assembles the use-case service over the postgres adapters.
 func NewService(pool *pgxpool.Pool, hasher app.PasswordHasher, issuer app.TokenIssuer,
-	refreshTTL time.Duration, log *slog.Logger,
+	refreshTTL time.Duration, del DeletionTiming, log *slog.Logger,
 ) (*app.Service, error) {
 	return app.NewService(app.Deps{
-		Users:      postgres.NewUserRepo(pool),
-		Tokens:     postgres.NewRefreshTokenRepo(pool),
-		Outbox:     postgres.NewOutboxWriter(pool),
-		Tx:         postgres.NewTxManager(pool),
-		Hasher:     hasher,
-		Issuer:     issuer,
-		Now:        time.Now,
-		RefreshTTL: refreshTTL,
-		Logger:     log,
+		Users:                  postgres.NewUserRepo(pool),
+		Tokens:                 postgres.NewRefreshTokenRepo(pool),
+		Outbox:                 postgres.NewOutboxWriter(pool),
+		Tx:                     postgres.NewTxManager(pool),
+		Deletions:              postgres.NewDeletionRepo(pool),
+		Idem:                   postgres.NewIdempotency(pool),
+		DeletionRepublishAfter: del.RepublishAfter,
+		DeletionStuckAfter:     del.StuckAfter,
+		Hasher:                 hasher,
+		Issuer:                 issuer,
+		Now:                    time.Now,
+		RefreshTTL:             refreshTTL,
+		Logger:                 log,
 	})
+}
+
+// RunDeletionSweeper runs svc.SweepDeletions every interval until ctx ends.
+// Errors are logged and retried on the next tick.
+func RunDeletionSweeper(ctx context.Context, svc *app.Service, interval time.Duration, log *slog.Logger) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		rep, stuck, err := svc.SweepDeletions(ctx)
+		switch {
+		case err != nil && ctx.Err() == nil:
+			log.ErrorContext(ctx, "account deletion sweep failed", "err", err)
+		case rep > 0 || stuck > 0:
+			log.InfoContext(ctx, "account deletion sweep", "republished", rep, "stuck", stuck)
+		}
+	}
 }
 
 // Run starts the service and blocks until ctx is cancelled and shutdown
@@ -98,7 +130,8 @@ func Run(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 	issuer := crypto.NewIssuer(keys, cfg.JWTIssuer, cfg.JWTAudience, cfg.AccessTTL)
-	svc, err := NewService(pool, crypto.NewHasher(cfg.Argon2Params()), issuer, cfg.RefreshTTL, log)
+	svc, err := NewService(pool, crypto.NewHasher(cfg.Argon2Params()), issuer, cfg.RefreshTTL,
+		DeletionTiming{RepublishAfter: cfg.DeletionRepublishAfter, StuckAfter: cfg.DeletionStuckAfter}, log)
 	if err != nil {
 		return err
 	}
@@ -155,6 +188,36 @@ func Run(ctx context.Context, cfg config.Config) error {
 	relayDone := make(chan error, 1)
 	go func() { relayDone <- relay.Run(runCtx) }()
 
+	// Account-deletion tracker (ADR 0014): collect user.data_purged and
+	// re-publish or flag unfinished requests.
+	if reg, err := app.RegisterDeletionGauge(otel.Meter(serviceName), svc); err != nil {
+		log.Warn("deletion gauge not registered", "err", err)
+	} else {
+		defer func() { _ = reg.Unregister() }()
+	}
+	purged, err := kafka.NewConsumer(kafka.ConsumerConfig{
+		Brokers: cfg.KafkaBrokers,
+		Group:   consumer.Group,
+		Topics:  consumer.Topics,
+		Handler: consumer.NewHandler(svc),
+		Logger:  log,
+	})
+	if err != nil {
+		cancel()
+		if rerr := <-relayDone; rerr != nil {
+			log.Warn("outbox relay stopped", "err", rerr)
+		}
+		return fmt.Errorf("kafka consumer: %w", err)
+	}
+	defer purged.Close() // after Run returns (awaited below)
+	consumerDone := make(chan error, 1)
+	go func() { consumerDone <- purged.Run(runCtx) }()
+	sweepDone := make(chan struct{})
+	go func() {
+		defer close(sweepDone)
+		RunDeletionSweeper(runCtx, svc, cfg.DeletionSweep, log)
+	}()
+
 	var runErr error
 	select {
 	case <-ctx.Done():
@@ -165,13 +228,27 @@ func Run(ctx context.Context, cfg config.Config) error {
 		if !errors.Is(err, http.ErrServerClosed) {
 			runErr = fmt.Errorf("http server: %w", err)
 		}
+	case err := <-consumerDone:
+		consumerDone = nil
+		if err == nil {
+			err = errors.New("stopped unexpectedly")
+		}
+		runErr = fmt.Errorf("deletion tracker consumer: %w", err)
+		log.Error("deletion tracker consumer stopped, shutting down", "err", err)
 	}
 	hs.Shutdown() // report NOT_SERVING while draining
 	cancel()
-	// Wait for the relay before the deferred producer and pool close.
+	// Wait for the relay, consumer and sweeper before the deferred producer
+	// and pool close.
 	if err := <-relayDone; err != nil && runErr == nil {
 		runErr = fmt.Errorf("outbox relay: %w", err)
 	}
+	if consumerDone != nil {
+		if err := <-consumerDone; err != nil && runErr == nil {
+			runErr = fmt.Errorf("deletion tracker consumer: %w", err)
+		}
+	}
+	<-sweepDone
 	if grpcErr != nil {
 		if err := <-grpcErr; err != nil && runErr == nil {
 			runErr = fmt.Errorf("grpc server: %w", err)

@@ -36,6 +36,11 @@ type Config struct {
 	KafkaBrokers           []string      `env:"KAFKA_BROKERS" envDefault:"redpanda:9092" envSeparator:","`
 	OutboxInterval         time.Duration `env:"OUTBOX_INTERVAL" envDefault:"500ms"`
 	JWKSURL                string        `env:"JWKS_URL" envDefault:"http://localhost:8001/.well-known/jwks.json"`
+
+	// Account-deletion tracker (ADR 0014).
+	DeletionSweep          time.Duration `env:"DELETION_SWEEP" envDefault:"1m"`
+	DeletionRepublishAfter time.Duration `env:"DELETION_REPUBLISH_AFTER" envDefault:"15m"`
+	DeletionStuckAfter     time.Duration `env:"DELETION_STUCK_AFTER" envDefault:"24h"`
 }
 
 // Load reads the server configuration from AUTH_* variables.

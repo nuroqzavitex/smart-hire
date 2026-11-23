@@ -62,20 +62,61 @@ func (h *handler) Logout(ctx context.Context, req *authv1.LogoutRequest) (*empty
 	return &emptypb.Empty{}, nil
 }
 
-func (h *handler) GetMe(ctx context.Context, _ *authv1.GetMeRequest) (*authv1.User, error) {
+// callerID returns the verified subject of the access token.
+func callerID(ctx context.Context) (uuid.UUID, error) {
 	claims, ok := authz.ClaimsFrom(ctx)
 	if !ok {
-		return nil, apperr.New(apperr.ErrUnauthenticated, "authentication required")
+		return uuid.Nil, apperr.New(apperr.ErrUnauthenticated, "authentication required")
 	}
 	id, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return nil, apperr.New(apperr.ErrUnauthenticated, "invalid token")
+		return uuid.Nil, apperr.New(apperr.ErrUnauthenticated, "invalid token")
+	}
+	return id, nil
+}
+
+func (h *handler) GetMe(ctx context.Context, _ *authv1.GetMeRequest) (*authv1.User, error) {
+	id, err := callerID(ctx)
+	if err != nil {
+		return nil, err
 	}
 	u, err := h.svc.GetMe(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	return userToProto(u), nil
+}
+
+func (h *handler) DeleteMe(ctx context.Context, req *authv1.DeleteMeRequest) (*authv1.DeleteMeResponse, error) {
+	id, err := callerID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r, err := h.svc.DeleteMe(ctx, id, req.GetPassword())
+	if err != nil {
+		return nil, err
+	}
+	return &authv1.DeleteMeResponse{DeletionRequestId: r.ID.String(), Status: string(r.Status)}, nil
+}
+
+func (h *handler) GetDeletionRequest(ctx context.Context, req *authv1.GetDeletionRequestRequest) (*authv1.DeletionRequest, error) {
+	id, err := uuid.Parse(req.GetId())
+	if err != nil {
+		return nil, apperr.New(apperr.ErrValidation, "invalid deletion request id")
+	}
+	r, err := h.svc.GetDeletionRequest(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	out := &authv1.DeletionRequest{
+		Id: r.ID.String(), UserId: r.UserID.String(), Status: string(r.Status),
+		ExpectedServices: r.Expected, PurgedServices: r.Purged,
+		RequestedAt: timestamppb.New(r.RequestedAt),
+	}
+	if r.CompletedAt != nil {
+		out.CompletedAt = timestamppb.New(*r.CompletedAt)
+	}
+	return out, nil
 }
 
 func pairToProto(p app.TokenPair) *authv1.TokenPair {
