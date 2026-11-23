@@ -1,0 +1,17 @@
+{{define "welcome.title"}}Chào mừng bạn đến với SmartHire{{end}}
+{{define "welcome.body"}}Tài khoản của bạn đã sẵn sàng. Hãy bắt đầu bằng việc hoàn thiện hồ sơ của mình.{{end}}
+
+{{define "cv_parsed.title"}}CV của bạn đã được phân tích xong{{end}}
+{{define "cv_parsed.body"}}Bạn có thể xem, chỉnh sửa thông tin đã trích xuất và xem các tin tuyển dụng được gợi ý.{{end}}
+
+{{define "cv_parse_failed.title"}}Không phân tích được CV của bạn{{end}}
+{{define "cv_parse_failed.body"}}Lý do: {{.Reason}}. Hãy tải CV lên lại hoặc yêu cầu phân tích lại.{{end}}
+
+{{define "application_received.title"}}Có hồ sơ mới cho {{.JobTitle}}{{end}}
+{{define "application_received.body"}}Một ứng viên vừa nộp hồ sơ. Hồ sơ đang được chấm điểm tự động.{{end}}
+
+{{define "application_status.title"}}Hồ sơ của bạn: {{.StatusLabel}}{{end}}
+{{define "application_status.body"}}Hồ sơ ứng tuyển {{.JobTitle}} đã chuyển sang trạng thái "{{.StatusLabel}}".{{end}}
+
+{{define "candidates_matched.title"}}{{.Count}} ứng viên phù hợp với {{.JobTitle}}{{end}}
+{{define "candidates_matched.body"}}Xem danh sách ứng viên được gợi ý cho tin tuyển dụng của bạn.{{end}}

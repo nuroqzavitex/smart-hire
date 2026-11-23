@@ -8,5 +8,6 @@ use (
 	./services/candidate
 	./services/gateway
 	./services/job
+	./services/notification
 	./tools
 )
