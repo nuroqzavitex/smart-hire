@@ -18,13 +18,13 @@ Mỗi ADR ghi một quyết định kiến trúc theo khuôn: **Context / Decisi
 | [0008](0008-presigned-upload-valet-key.md) | Upload CV bằng presigned URL (valet key) + MinIO | M1b |
 | [0009](0009-cqrs-job-search-read-model.md) | CQRS cho tìm kiếm JD — read model OpenSearch + projector | M2a |
 | [0010](0010-ai-matching.md) | Matching CV ↔ JD — embedding Gemini, Qdrant, điểm tính sẵn | M2b |
+| [0011](0011-application-saga-orchestration.md) | Nộp đơn bằng Saga orchestration tự viết — worker quét bảng, lease, version guard | M3 |
 
 ## Chủ đề dự kiến (chưa có số)
 
 Các chủ đề trong `spec.md` §10, nhận số khi milestone tương ứng viết chúng:
 
 - `grpc-for-sync`
-- `saga-orchestration`
 - `outbox-pattern`
 - `account-deletion-choreography`
 - `when-not-to-use-saga`

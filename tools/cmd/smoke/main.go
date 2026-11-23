@@ -63,6 +63,7 @@ func main() {
 	recruiterPassword := flag.String("recruiter-password", "Password123!", "seeded recruiter password")
 	candidateEmail := flag.String("candidate-email", "candidate@smarthire.local", "seeded candidate email")
 	candidatePassword := flag.String("candidate-password", "Password123!", "seeded candidate password")
+	chaosAI := flag.Bool("chaos-ai", false, "run only the AI-outage scenario (expects ai-api to be stopped)")
 	flag.Parse()
 
 	s := &smoke{
@@ -81,7 +82,11 @@ func main() {
 		},
 		email: "smoke-" + strings.ToLower(ulid.Make().String()) + "@smarthire.local",
 	}
-	if err := s.run(); err != nil {
+	run := s.run
+	if *chaosAI {
+		run = s.runChaosAI
+	}
+	if err := run(); err != nil {
 		os.Exit(1)
 	}
 }
@@ -114,6 +119,17 @@ func (s *smoke) run() error {
 	steps = append(steps, s.searchSteps()...)
 	steps = append(steps, s.cvSteps()...)
 	steps = append(steps, s.matchingSteps()...)
+	steps = append(steps, s.applicationSteps()...)
+	return runSteps(steps)
+}
+
+// runChaosAI registers the throwaway user (the fixture logs in as it) and
+// runs the AI-outage scenario.
+func (s *smoke) runChaosAI() error {
+	return runSteps(append([]namedStep{{"register", s.register}}, s.chaosAISteps()...))
+}
+
+func runSteps(steps []namedStep) error {
 	for _, st := range steps {
 		if err := step(st.name, st.fn); err != nil {
 			return err
