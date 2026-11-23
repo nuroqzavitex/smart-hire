@@ -32,9 +32,11 @@ type Deps struct {
 	CVs          CVs
 	Quota        Quota
 	Scorer       Scorer
-	Now          func() time.Time
-	NewID        func() uuid.UUID
-	Logger       *slog.Logger
+	// Purger pseudonymises a deleted user's applications (ADR 0014).
+	Purger UserPurger
+	Now    func() time.Time
+	NewID  func() uuid.UUID
+	Logger *slog.Logger
 	// Wake nudges the saga worker after a saga became due; nil is a no-op.
 	Wake func()
 

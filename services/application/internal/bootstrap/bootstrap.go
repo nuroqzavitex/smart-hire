@@ -127,6 +127,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 		CVs:                 cvclient.New(candConn, cfg.CallTimeout),
 		Quota:               quotaclient.New(candConn, cfg.CallTimeout),
 		Scorer:              aiclient.New(aiConn, cfg.AIBreakerFailures, cfg.AIBreakerOpen, cfg.AITimeout, log),
+		Purger:              postgres.NewPurgeRepo(pool),
 		Logger:              log,
 		Wake:                func() { worker.Wake() },
 		SagaDeadline:        cfg.SagaDeadline,

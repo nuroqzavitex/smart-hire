@@ -14,10 +14,16 @@ const (
 	ReasonTimeout       = "timeout"
 	ReasonAIUnavailable = "ai_unavailable"
 	ReasonNotMatched    = "not_matched"
+	// ReasonAccountDeleted cancels the live applications of a deleted
+	// candidate (ADR 0014).
+	ReasonAccountDeleted = "account_deleted"
 )
 
 // ActorSystem is the history actor of saga transitions.
 const ActorSystem = "system"
+
+// ActorDeletedUser replaces a deleted user's ID as a history actor.
+const ActorDeletedUser = "deleted-user"
 
 // Application is one candidate's application to one job with one CV.
 // RecruiterID is copied from the job at submit time so recruiters can list

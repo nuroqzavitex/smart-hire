@@ -214,6 +214,7 @@ func newEnv(t *testing.T) *env {
 		CVs:          fakeCVs{},
 		Quota:        e.quota,
 		Scorer:       fakeScorer{},
+		Purger:       postgres.NewPurgeRepo(pool),
 		Now:          e.clock.Now,
 		SagaDeadline: time.Minute,
 		SagaLease:    30 * time.Second,
