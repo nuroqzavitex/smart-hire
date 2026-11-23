@@ -118,3 +118,46 @@ def test_parsed_cv_fields_match_contract(contracts_dir: Path, model: type[BaseMo
 
 def test_cv_updated_parsed_defs_match_cv_parsed(contracts_dir: Path) -> None:
     assert _schema(contracts_dir, "cv.updated")["$defs"] == _schema(contracts_dir, "cv.parsed")["$defs"]
+
+
+def _payload_validator(contracts_dir: Path, event_type: str) -> Draft202012Validator:
+    return _validator(_schema(contracts_dir, event_type)["properties"]["payload"])
+
+
+def test_user_deleted_payload_matches_contract(contracts_dir: Path) -> None:
+    from ai_service.domain.events import UserDeletedPayload
+
+    schema = _payload_validator(contracts_dir, "user.deleted")
+    doc = {
+        "user_id": str(CANDIDATE_ID),
+        "role": "candidate",
+        "deletion_request_id": str(CV_ID),
+        "requested_at": "2026-11-24T10:00:00Z",
+    }
+    schema.validate(doc)
+    p = UserDeletedPayload.model_validate(doc)
+    assert p.user_id == CANDIDATE_ID
+    assert set(UserDeletedPayload.model_fields) == set(
+        _schema(contracts_dir, "user.deleted")["properties"]["payload"]["required"]
+    )
+
+
+def test_data_purged_envelope_matches_contract(contracts_dir: Path) -> None:
+    from ai_service.domain.events import UserDeletedPayload, purged_envelope
+
+    deleted = UserDeletedPayload(
+        user_id=CANDIDATE_ID, role="candidate", deletion_request_id=CV_ID, requested_at=NOW
+    )
+    env = purged_envelope(deleted, now=NOW, trace_id="", correlation_id="c")
+    _validator(_schema(contracts_dir, "user.data_purged")).validate(json.loads(dump_envelope(env)))
+    assert env.payload["service"] == "ai"
+    assert env.source == "ai-service"
+
+
+def test_cv_updated_status_enum_matches_contract(contracts_dir: Path) -> None:
+    from typing import get_args
+
+    from ai_service.domain.events import CvUpdatedPayload
+
+    enum = _schema(contracts_dir, "cv.updated")["properties"]["payload"]["properties"]["status"]["enum"]
+    assert set(get_args(CvUpdatedPayload.model_fields["status"].annotation)) == set(enum)

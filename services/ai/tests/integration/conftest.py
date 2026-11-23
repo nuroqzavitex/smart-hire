@@ -281,4 +281,6 @@ def qdrant_url() -> Iterator[str]:
 @pytest.fixture
 def clean_matching(engine: Engine) -> None:
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE match_jobs, match_cvs, match_results, processed_events, outbox"))
+        conn.execute(
+            text("TRUNCATE match_jobs, match_cvs, match_results, processed_events, outbox, cv_parse_results")
+        )

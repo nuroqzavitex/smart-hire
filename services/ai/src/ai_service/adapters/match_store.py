@@ -13,7 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Connection, Engine, bindparam, text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TEXT
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from ai_service.adapters import outbox
@@ -56,8 +56,8 @@ _CANDIDATE_CVS = text(
     "ORDER BY parsed_at DESC NULLS LAST, cv_id DESC FOR UPDATE"
 )
 _SET_ACTIVE = text(
-    "UPDATE match_cvs SET active = (cv_id = :active) WHERE candidate_id = :candidate_id "
-    "AND active IS DISTINCT FROM (cv_id = :active)"
+    "UPDATE match_cvs SET active = (cv_id IS NOT DISTINCT FROM :active) WHERE candidate_id = :candidate_id "
+    "AND active IS DISTINCT FROM (cv_id IS NOT DISTINCT FROM :active)"
 )
 _UPSERT_RESULT = text(
     "INSERT INTO match_results (job_id, cv_id, candidate_id, score, breakdown, model_version, computed_at) "
@@ -69,6 +69,30 @@ _DELETE_JOB_RESULTS = text("DELETE FROM match_results WHERE job_id = :job_id")
 _DELETE_CV_RESULTS = text("DELETE FROM match_results WHERE cv_id = ANY(:ids)").bindparams(
     bindparam("ids", type_=ARRAY(PG_UUID(as_uuid=True)))
 )
+# --- account deletion (ADR 0014) ---
+# A purged CV stays as a DELETED tombstone with the highest version, so no
+# cv.updated delivered late can bring its content back.
+_TOMBSTONE_VERSION = 9_223_372_036_854_775_807
+_LOCK_CANDIDATE_CVS = text("SELECT cv_id FROM match_cvs WHERE candidate_id = :candidate_id FOR UPDATE")
+_TOMBSTONE_CANDIDATE_CVS = text(
+    "UPDATE match_cvs SET status = 'DELETED', parsed = NULL, parsed_at = NULL, active = false, "
+    "version = :version, updated_at = now() WHERE candidate_id = :candidate_id"
+)
+_DELETE_CANDIDATE_RESULTS = text("DELETE FROM match_results WHERE candidate_id = :candidate_id")
+_DELETE_CANDIDATE_PARSES = text(
+    "DELETE FROM cv_parse_results WHERE candidate_id = :candidate_id OR cv_id = ANY(:ids)"
+).bindparams(bindparam("ids", type_=ARRAY(PG_UUID(as_uuid=True))))
+_DELETE_CV_PARSES = text("DELETE FROM cv_parse_results WHERE cv_id = :cv_id")
+# Published cv.parsed rows still hold the parsed CV.
+_DELETE_CV_OUTBOX = text(
+    "DELETE FROM outbox WHERE aggregate_id = ANY(:keys) AND event_type = 'cv.parsed'"
+).bindparams(bindparam("keys", type_=ARRAY(TEXT)))
+_CANDIDATE_PARSED_CVS = text("SELECT cv_id FROM cv_parse_results WHERE candidate_id = :candidate_id")
+_ANONYMISE_RECRUITER = text(
+    "UPDATE match_jobs SET recruiter_id = '00000000-0000-0000-0000-000000000000', updated_at = now() "
+    "WHERE recruiter_id = :recruiter_id"
+)
+
 _TOP = text(
     "SELECT r.job_id, r.cv_id, r.candidate_id, r.score, r.breakdown, r.model_version "
     "FROM match_results r JOIN match_cvs c ON c.cv_id = r.cv_id AND c.active "
@@ -205,6 +229,27 @@ class PgMatchStore:
     def delete_results_for_cvs(self, conn: Connection, cv_ids: Sequence[UUID]) -> None:
         if cv_ids:
             conn.execute(_DELETE_CV_RESULTS, {"ids": list(cv_ids)})
+
+    def purge_candidate(self, conn: Connection, candidate_id: UUID) -> list[UUID]:
+        """Tombstones the candidate's CVs and deletes its results, parse results and
+        cv.parsed outbox rows; returns the tombstoned CV ids (their vectors go too)."""
+        cv_ids = [r.cv_id for r in conn.execute(_LOCK_CANDIDATE_CVS, {"candidate_id": candidate_id})]
+        parsed_ids = [r.cv_id for r in conn.execute(_CANDIDATE_PARSED_CVS, {"candidate_id": candidate_id})]
+        conn.execute(_TOMBSTONE_CANDIDATE_CVS, {"candidate_id": candidate_id, "version": _TOMBSTONE_VERSION})
+        conn.execute(_DELETE_CANDIDATE_RESULTS, {"candidate_id": candidate_id})
+        conn.execute(_DELETE_CANDIDATE_PARSES, {"candidate_id": candidate_id, "ids": cv_ids})
+        keys = sorted({str(i) for i in (*cv_ids, *parsed_ids)})
+        if keys:
+            conn.execute(_DELETE_CV_OUTBOX, {"keys": keys})
+        return cv_ids
+
+    def forget_cv(self, conn: Connection, cv_id: UUID) -> None:
+        """Drops a deleted CV's parse results and cv.parsed outbox rows."""
+        conn.execute(_DELETE_CV_PARSES, {"cv_id": cv_id})
+        conn.execute(_DELETE_CV_OUTBOX, {"keys": [str(cv_id)]})
+
+    def anonymise_recruiter(self, conn: Connection, recruiter_id: UUID) -> None:
+        conn.execute(_ANONYMISE_RECRUITER, {"recruiter_id": recruiter_id})
 
     # --- reads ---
 

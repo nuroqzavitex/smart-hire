@@ -16,13 +16,17 @@ from uuid import UUID
 from pydantic import BaseModel, ValidationError
 
 from ai_service.domain.events import (
+    SOURCE_AUTH,
     SOURCE_CANDIDATE,
     SOURCE_JOB,
+    USER_DELETED,
     CvUpdatedPayload,
     Envelope,
     JobPayload,
     JobRefPayload,
+    UserDeletedPayload,
     new_envelope,
+    purged_envelope,
 )
 from ai_service.domain.matching import CvProfile, JobProfile, MatchRow, cv_text, job_text, score
 from ai_service.metrics import Instruments
@@ -34,12 +38,13 @@ log = logging.getLogger(__name__)
 
 JOB_EVENTS = ("job.created", "job.updated", "job.closed", "job.deleted")
 CV_UPDATED = "cv.updated"
-TOPICS = (*JOB_EVENTS, CV_UPDATED)
+TOPICS = (*JOB_EVENTS, CV_UPDATED, USER_DELETED)
 MATCH_COMPLETED = "match.completed"
 POOL = 50
 COMPLETED_TOP = 20
 STATUS_OPEN = "open"
 CV_PARSED = "PARSED"
+CV_DELETED = "DELETED"
 
 
 class MatchStore(Protocol):
@@ -56,6 +61,9 @@ class MatchStore(Protocol):
     def delete_results_for_job(self, conn: Any, job_id: UUID) -> None: ...
     def delete_results_for_cvs(self, conn: Any, cv_ids: Sequence[UUID]) -> None: ...
     def write_outbox(self, conn: Any, env: Envelope, aggregate_id: str) -> None: ...
+    def purge_candidate(self, conn: Any, candidate_id: UUID) -> list[UUID]: ...
+    def forget_cv(self, conn: Any, cv_id: UUID) -> None: ...
+    def anonymise_recruiter(self, conn: Any, recruiter_id: UUID) -> None: ...
     def load_job(self, job_id: UUID) -> JobProfile | None: ...
     def load_cv(self, cv_id: UUID) -> CvProfile | None: ...
     def load_cvs(self, cv_ids: Sequence[UUID]) -> dict[UUID, CvProfile]: ...
@@ -113,8 +121,39 @@ class MatchHandler:
             if (p.status == CV_PARSED) != (p.parsed is not None and p.parsed_at is not None):
                 raise PermanentError("cv.updated parsed fields do not match status")
             self._cv_updated(env, p)
+        elif env.event_type == USER_DELETED:
+            if env.source != SOURCE_AUTH:
+                raise PermanentError("unexpected event source")
+            self._user_deleted(env, _payload(UserDeletedPayload, env))
         else:
             raise PermanentError("unexpected event type")
+
+    # --- account deletion (ADR 0014) ---
+
+    def _user_deleted(self, env: Envelope, p: UserDeletedPayload) -> None:
+        """Purges the user's CVs (tombstones, vectors, results, parse results) and
+        anonymises it as a job owner, then answers user.data_purged. A new
+        user.deleted (a republish) confirms again."""
+        with self._store.transaction() as conn:
+            if not self._store.record_event(conn, env.event_id):
+                return
+            cv_ids = self._store.purge_candidate(conn, p.user_id)
+            self._store.anonymise_recruiter(conn, p.user_id)
+            purged = purged_envelope(
+                p, now=self._clock(), trace_id=self._trace_id(), correlation_id=env.correlation_id
+            )
+            self._store.write_outbox(conn, purged, str(p.user_id))
+            for cv_id in cv_ids:
+                self._vectors.delete_cv(cv_id)
+        log.info(
+            "ai data purged",
+            extra={
+                "event_id": env.event_id,
+                "user_id": str(p.user_id),
+                "deletion_request_id": str(p.deletion_request_id),
+                "cvs_removed": len(cv_ids),
+            },
+        )
 
     # --- jobs ---
 
@@ -217,6 +256,8 @@ class MatchHandler:
             active, others = self._store.refresh_active(conn, cv.candidate_id)
             self._store.delete_results_for_cvs(conn, [cv.cv_id])
             self._store.upsert_results(conn, rows)
+            if cv.status == CV_DELETED:
+                self._store.forget_cv(conn, cv.cv_id)
             if active is not None and active != cv.cv_id:
                 # Another CV of the candidate is (or becomes) active: rescore it from
                 # its stored vector, since jobs matched while it was inactive skipped it.

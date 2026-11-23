@@ -17,6 +17,10 @@ SOURCE_JOB = "job-service"
 EVENT_VERSION = 1
 CV_PARSED = "cv.parsed"
 CV_PARSE_FAILED = "cv.parse_failed"
+SOURCE_AUTH = "auth-service"
+USER_DELETED = "user.deleted"
+USER_DATA_PURGED = "user.data_purged"
+SERVICE_NAME = "ai"
 
 ULID_PATTERN = r"^[0-9A-HJKMNP-TV-Z]{26}$"
 UlidStr = Annotated[str, StringConstraints(pattern=ULID_PATTERN)]
@@ -78,9 +82,20 @@ class CvUpdatedPayload(BaseModel):
     cv_id: UUID
     candidate_id: UUID
     version: Annotated[int, Field(ge=1)]
-    status: Literal["UPLOADED", "PARSED", "FAILED"]
+    status: Literal["UPLOADED", "PARSED", "FAILED", "DELETED"]
     parsed: ParsedCV | None
     parsed_at: AwareDatetime | None
+
+
+class UserDeletedPayload(BaseModel):
+    """user.deleted payload (contracts/events/user.deleted.v1.json, ADR 0014)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: UUID
+    role: Literal["candidate", "recruiter", "admin"]
+    deletion_request_id: UUID
+    requested_at: AwareDatetime
 
 
 def new_envelope(
@@ -127,6 +142,19 @@ def result_envelope(
         payload["reason"] = outcome.reason
         payload["detail"] = outcome.detail
     return new_envelope(event_type, payload, now=now, trace_id=trace_id, correlation_id=correlation_id)
+
+
+def purged_envelope(
+    deleted: UserDeletedPayload, *, now: datetime, trace_id: str, correlation_id: str
+) -> Envelope:
+    """The ai service's user.data_purged answer to a user.deleted (ADR 0014)."""
+    payload = {
+        "user_id": str(deleted.user_id),
+        "service": SERVICE_NAME,
+        "deletion_request_id": str(deleted.deletion_request_id),
+        "purged_at": _rfc3339_utc(now),
+    }
+    return new_envelope(USER_DATA_PURGED, payload, now=now, trace_id=trace_id, correlation_id=correlation_id)
 
 
 def _rfc3339_utc(ts: datetime) -> str:

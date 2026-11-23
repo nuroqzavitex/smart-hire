@@ -331,3 +331,195 @@ def test_scores_are_recorded_as_metrics(engine: Engine, qdrant_url: str) -> None
     finally:
         for name in collection_names(version):
             client.delete_collection(name)
+
+
+# --- account deletion (ADR 0014) ---
+
+
+def user_deleted(user: uuid.UUID, role: str = "candidate") -> Envelope:
+    return env(
+        "user.deleted",
+        {
+            "user_id": str(user),
+            "role": role,
+            "deletion_request_id": str(uuid.uuid4()),
+            "requested_at": NOW.isoformat(),
+        },
+        source="auth-service",
+    )
+
+
+def _parse_result(engine: Engine, cv: uuid.UUID, candidate: uuid.UUID | None) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO cv_parse_results "
+                "(cv_id, attempt_id, status, parsed, text_chars, truncated, candidate_id) "
+                "VALUES (:cv, 'a1', 'PARSED', CAST(:doc AS jsonb), 10, false, :cand)"
+            ),
+            {"cv": cv, "cand": candidate, "doc": '{"full_name": "A"}'},
+        )
+        conn.execute(
+            text(
+                "INSERT INTO outbox (id, aggregate_id, event_type, payload, published_at) "
+                "VALUES (gen_random_uuid(), :key, 'cv.parsed', CAST(:doc AS jsonb), now())"
+            ),
+            {"key": str(cv), "doc": '{"payload": {"parsed": {"full_name": "A"}}}'},
+        )
+
+
+def _count(engine: Engine, sql: str, **params: Any) -> int:
+    with engine.connect() as conn:
+        return int(conn.execute(text(sql), params).scalar_one())
+
+
+def test_user_deleted_purges_candidate_and_confirms(setup: Any, engine: Engine) -> None:
+    handler, store, vectors = setup
+    cand, other = uuid.uuid4(), uuid.uuid4()
+    cv, unseen, keep = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    job = uuid.uuid4()
+    handler.handle(job_event(job))
+    handler.handle(cv_event(cv, cand))
+    handler.handle(cv_event(keep, other))
+    _parse_result(engine, cv, cand)
+    _parse_result(engine, unseen, cand)  # parsed, but the matcher never saw its cv.updated
+    _parse_result(engine, keep, other)
+    assert {r.cv_id for r in store.top_candidates(job, 10)} == {cv, keep}
+
+    ev = user_deleted(cand)
+    handler.handle(ev)
+    handler.handle(ev)  # redelivery
+
+    got = store.load_cv(cv)
+    assert got.status == "DELETED"
+    assert got.parsed is None
+    assert vectors.get_cv_vector(cv) is None
+    assert [r.cv_id for r in store.top_candidates(job, 10)] == [keep]
+    assert _count(engine, "SELECT count(*) FROM match_results WHERE candidate_id = :c", c=cand) == 0
+    assert _count(engine, "SELECT count(*) FROM cv_parse_results WHERE candidate_id = :c", c=cand) == 0
+    assert _count(engine, "SELECT count(*) FROM cv_parse_results WHERE cv_id = :k", k=keep) == 1
+    assert (
+        _count(
+            engine,
+            "SELECT count(*) FROM outbox WHERE event_type = 'cv.parsed' AND aggregate_id IN (:a, :b)",
+            a=str(cv),
+            b=str(unseen),
+        )
+        == 0
+    ), "published cv.parsed rows held the parsed CV"
+    assert vectors.get_cv_vector(keep) is not None
+
+    purged = [e for e in outbox(engine) if e["type"] == "user.data_purged"]
+    assert len(purged) == 1
+    assert purged[0]["key"] == str(cand)
+    assert purged[0]["payload"]["payload"]["service"] == "ai"
+    assert purged[0]["payload"]["source"] == "ai-service"
+
+    handler.handle(user_deleted(cand))  # republish: confirm again
+    assert len([e for e in outbox(engine) if e["type"] == "user.data_purged"]) == 2
+
+
+def test_late_cv_updated_after_purge_cannot_revive(setup: Any) -> None:
+    handler, store, vectors = setup
+    cand, cv = uuid.uuid4(), uuid.uuid4()
+    handler.handle(cv_event(cv, cand, version=2))
+    handler.handle(user_deleted(cand))
+    handler.handle(cv_event(cv, cand, version=3))  # older than the delete, delivered late
+    got = store.load_cv(cv)
+    assert got.status == "DELETED"
+    assert got.parsed is None
+    assert vectors.get_cv_vector(cv) is None
+
+
+def test_cv_deleted_drops_vector_results_and_parse_results(setup: Any, engine: Engine) -> None:
+    handler, store, vectors = setup
+    cand, cv, job = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    handler.handle(job_event(job))
+    handler.handle(cv_event(cv, cand, version=2))
+    _parse_result(engine, cv, None)  # row written before the candidate_id column existed
+    handler.handle(cv_event(cv, cand, version=3, status="DELETED"))
+    assert store.load_cv(cv).status == "DELETED"
+    assert vectors.get_cv_vector(cv) is None
+    assert store.top_candidates(job, 10) == []
+    assert _count(engine, "SELECT count(*) FROM cv_parse_results WHERE cv_id = :c", c=cv) == 0
+    assert (
+        _count(
+            engine,
+            "SELECT count(*) FROM outbox WHERE event_type = 'cv.parsed' AND aggregate_id = :c",
+            c=str(cv),
+        )
+        == 0
+    )
+
+
+def test_user_deleted_anonymises_recruiter_jobs(setup: Any, engine: Engine) -> None:
+    handler, store, _ = setup
+    job = uuid.uuid4()
+    handler.handle(job_event(job))
+    handler.handle(user_deleted(RECRUITER, role="recruiter"))
+    assert store.load_job(job).recruiter_id == uuid.UUID(int=0)
+
+
+def test_user_deleted_from_wrong_source_is_permanent(setup: Any) -> None:
+    handler, _, _ = setup
+    bad = user_deleted(uuid.uuid4())
+    bad = bad.model_copy(update={"source": "job-service"})
+    with pytest.raises(PermanentError):
+        handler.handle(bad)
+
+
+def test_worker_does_not_store_results_for_a_tombstoned_cv(setup: Any, engine: Engine) -> None:
+    from ai_service.adapters.db import PgResultStore
+    from ai_service.domain.events import CvUploadedPayload, result_envelope
+    from ai_service.domain.models import ParsedCV, ParseSuccess
+
+    handler, _, _ = setup
+    cand, cv = uuid.uuid4(), uuid.uuid4()
+    handler.handle(cv_event(cv, cand, version=2))
+    handler.handle(user_deleted(cand))
+
+    payload = CvUploadedPayload(
+        cv_id=cv, candidate_id=cand, object_key=f"cvs/{cand}/{cv}.pdf", attempt_id=str(ULID())
+    )
+    outcome = ParseSuccess(
+        parsed=ParsedCV.model_validate(parsed(["Go"])), model_version="fake", text_chars=10, truncated=False
+    )
+    result = result_envelope(outcome, payload, now=NOW, trace_id="", correlation_id="")
+    assert PgResultStore(engine).commit_outcome(str(ULID()), payload, outcome, result)
+    assert _count(engine, "SELECT count(*) FROM cv_parse_results WHERE cv_id = :c", c=cv) == 0
+    assert (
+        _count(
+            engine,
+            "SELECT count(*) FROM outbox WHERE event_type = 'cv.parsed' AND aggregate_id = :c",
+            c=str(cv),
+        )
+        == 0
+    )
+
+    other_cv = uuid.uuid4()
+    payload2 = CvUploadedPayload(
+        cv_id=other_cv, candidate_id=cand, object_key=f"cvs/{cand}/{other_cv}.pdf", attempt_id=str(ULID())
+    )
+    result2 = result_envelope(outcome, payload2, now=NOW, trace_id="", correlation_id="")
+    assert PgResultStore(engine).commit_outcome(str(ULID()), payload2, outcome, result2)
+    assert (
+        _count(
+            engine,
+            "SELECT count(*) FROM cv_parse_results WHERE cv_id = :c AND candidate_id = :d",
+            c=other_cv,
+            d=cand,
+        )
+        == 1
+    ), "results keep the candidate for a later purge"
+
+
+def test_only_cv_reparsed_leaves_no_active_cv(setup: Any) -> None:
+    # Regression: with no PARSED CV left, refresh_active wrote NULL into active.
+    handler, store, vectors = setup
+    cand, cv, job = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    handler.handle(job_event(job))
+    handler.handle(cv_event(cv, cand, version=2))
+    handler.handle(cv_event(cv, cand, version=3, status="UPLOADED"))
+    assert store.load_cv(cv).status == "UPLOADED"
+    assert store.top_candidates(job, 10) == []
+    assert vectors.get_cv_vector(cv) is None
