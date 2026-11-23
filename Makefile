@@ -1,4 +1,4 @@
-.PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job cover-candidate \
+.PHONY: bootstrap proto proto-deps openapi lint sqlc test test-int cover-auth cover-job cover-candidate cover-application \
 	ai-sync ai-lint ai-test ai-test-int ai-cover minio-image opensearch-image infra-up obs-up up down down-v migrate seed smoke search-rebuild search-reconcile logs
 
 # Compose stack (deploy/docker), project name smarthire. Paths are absolute
@@ -42,7 +42,7 @@ lint:
 	done
 
 sqlc:
-	@for s in auth job candidate; do \
+	@for s in auth job candidate application; do \
 		MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR)/services/$$s:/src" -w /src sqlc/sqlc:1.29.0 generate || exit 1; \
 	done
 
@@ -68,6 +68,10 @@ cover-job:
 
 cover-candidate:
 	cd services/candidate && go test -coverprofile=coverage.out ./internal/domain/... ./internal/app/... && \
+		go tool cover -func=coverage.out | awk '/^total:/ { sub("%","",$$3); printf "total coverage: %s%%\n", $$3; if ($$3+0 < 70) { print "coverage below 70%"; exit 1 } }'
+
+cover-application:
+	cd services/application && go test -coverprofile=coverage.out ./internal/domain/... ./internal/app/... && \
 		go tool cover -func=coverage.out | awk '/^total:/ { sub("%","",$$3); printf "total coverage: %s%%\n", $$3; if ($$3+0 < 70) { print "coverage below 70%"; exit 1 } }'
 
 # Python AI service (services/ai, uv). ai-test runs unit tests only (no Docker);
