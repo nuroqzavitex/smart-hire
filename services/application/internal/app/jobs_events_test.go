@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nuroqzavitex/smarthire/pkg/apperr"
 	"github.com/nuroqzavitex/smarthire/pkg/event"
 	"github.com/nuroqzavitex/smarthire/services/application/internal/app"
 	"github.com/nuroqzavitex/smarthire/services/application/internal/domain"
@@ -78,4 +79,45 @@ func TestHandleJobEvent_Poison(t *testing.T) {
 	raw, err := json.Marshal(env)
 	require.NoError(t, err)
 	assert.ErrorIs(t, e.svc.HandleJobEvent(context.Background(), raw), app.ErrPoisonEvent)
+}
+
+// Deferred minor from the M3 review: a job closed while an application is
+// being submitted must still end up cancelled, and a candidate applying to a
+// closed job learns it is closed (409) instead of "not found".
+func TestHandleJobEvent_RemembersClosedJobs(t *testing.T) {
+	e := newEnv(t)
+	other := uuid.New()
+	require.NoError(t, e.svc.HandleJobEvent(context.Background(), jobEvent(t, "job.closed", e.job)))
+	require.NoError(t, e.svc.HandleJobEvent(context.Background(), jobEvent(t, "job.deleted", other)))
+	assert.Contains(t, e.closed.m, e.job)
+	assert.Contains(t, e.closed.m, other)
+}
+
+func TestSubmit_ClosedJobConflictsWithoutAskingJob(t *testing.T) {
+	e := newEnv(t)
+	require.NoError(t, e.svc.HandleJobEvent(context.Background(), jobEvent(t, "job.closed", e.job)))
+	_, err := e.svc.Submit(asCandidate(uuid.New()), app.SubmitInput{JobID: e.job, CVID: e.cv, IdempotencyKey: "k"})
+	assert.ErrorIs(t, err, apperr.ErrConflict)
+	assert.EqualError(t, err, "job is not open")
+	assert.Zero(t, e.jobs.calls)
+	assert.Empty(t, e.apps.m)
+}
+
+func TestSaga_JobClosedBeforeSagaExistedCompensates(t *testing.T) {
+	e := newEnv(t)
+	_, a := e.submit(t)
+	// job.closed was consumed while Submit's transaction was still open:
+	// it found no saga to cancel, but it recorded the closed job.
+	e.closed.m[e.job] = t0
+
+	e.step(t, 1)
+	assert.Empty(t, e.quota.reserved, "no quota for a closed job")
+	s := e.sagas.m[a.ID]
+	assert.Equal(t, domain.SagaCompensating, s.State)
+	assert.Equal(t, domain.ReasonJobClosed, s.CancelReason)
+
+	e.step(t, 1)
+	got := e.apps.m[a.ID]
+	assert.Equal(t, domain.StatusCancelled, got.Status)
+	assert.Equal(t, domain.ReasonJobClosed, got.Reason)
 }

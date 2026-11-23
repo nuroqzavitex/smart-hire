@@ -117,7 +117,7 @@ func setup(ctx context.Context, ctr *tcpostgres.PostgresContainer) error {
 func reset(t *testing.T) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(),
-		`TRUNCATE saga_instances, application_history, applications, outbox, processed_events`)
+		`TRUNCATE saga_instances, application_history, applications, outbox, processed_events, closed_jobs`)
 	require.NoError(t, err)
 }
 
@@ -208,6 +208,7 @@ func newEnv(t *testing.T) *env {
 		Sagas:        e.sagas,
 		Outbox:       postgres.NewOutboxWriter(pool),
 		Idem:         postgres.NewIdempotency(pool),
+		ClosedJobs:   postgres.NewClosedJobRepo(pool),
 		Tx:           postgres.NewTxManager(pool),
 		Jobs:         fakeJobs{recruiter: e.recruiter},
 		CVs:          fakeCVs{},

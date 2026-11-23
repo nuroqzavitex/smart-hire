@@ -121,6 +121,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 		Sagas:               postgres.NewSagaRepo(pool),
 		Outbox:              postgres.NewOutboxWriter(pool),
 		Idem:                postgres.NewIdempotency(pool),
+		ClosedJobs:          postgres.NewClosedJobRepo(pool),
 		Tx:                  postgres.NewTxManager(pool),
 		Jobs:                jobclient.New(jobConn, cfg.CallTimeout),
 		CVs:                 cvclient.New(candConn, cfg.CallTimeout),

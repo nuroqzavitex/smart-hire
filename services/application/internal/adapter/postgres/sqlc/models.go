@@ -40,6 +40,11 @@ type ApplicationHistory struct {
 	At            time.Time
 }
 
+type ClosedJob struct {
+	JobID    uuid.UUID
+	ClosedAt time.Time
+}
+
 type Outbox struct {
 	ID          uuid.UUID
 	AggregateID string

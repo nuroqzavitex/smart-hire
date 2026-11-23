@@ -15,8 +15,9 @@ type jobRefPayload struct {
 	JobID string `json:"job_id"`
 }
 
-// HandleJobEvent consumes job.closed and job.deleted: every saga of that job
-// that is still RUNNING switches to compensation (release the quota, cancel
+// HandleJobEvent consumes job.closed and job.deleted: it records the job as
+// closed (both are terminal) and every saga of that job that is still
+// RUNNING switches to compensation (release the quota, cancel
 // the application). Applications past the saga are left to the recruiter.
 // Other event types are ignored; duplicates are skipped by event id.
 func (s *Service) HandleJobEvent(ctx context.Context, raw []byte) error {
@@ -41,7 +42,11 @@ func (s *Service) HandleJobEvent(ctx context.Context, raw []byte) error {
 		if err != nil || !first {
 			return err
 		}
-		cancelled, err = s.Sagas.CancelRunningForJob(ctx, jobID, domain.ReasonJobClosed, s.Now().UTC())
+		now := s.Now().UTC()
+		if err := s.ClosedJobs.MarkClosed(ctx, jobID, now); err != nil {
+			return err
+		}
+		cancelled, err = s.Sagas.CancelRunningForJob(ctx, jobID, domain.ReasonJobClosed, now)
 		return err
 	})
 	if err != nil {

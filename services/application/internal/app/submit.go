@@ -16,6 +16,8 @@ import (
 
 const maxIdempotencyKey = 128
 
+var errJobNotOpen = apperr.New(apperr.ErrConflict, "job is not open")
+
 // SubmitInput is a candidate's application request.
 type SubmitInput struct {
 	JobID          uuid.UUID
@@ -50,12 +52,21 @@ func (s *Service) Submit(ctx context.Context, in SubmitInput) (domain.Applicatio
 		return a, err
 	}
 
+	// The job service hides closed jobs from candidates (404); a job we saw
+	// close is reported as such.
+	closed, err := s.ClosedJobs.IsClosed(ctx, in.JobID)
+	if err != nil {
+		return domain.Application{}, err
+	}
+	if closed {
+		return domain.Application{}, errJobNotOpen
+	}
 	job, err := s.Jobs.GetJob(ctx, in.JobID)
 	if err != nil {
 		return domain.Application{}, err
 	}
 	if !job.Open {
-		return domain.Application{}, apperr.New(apperr.ErrConflict, "job is not open")
+		return domain.Application{}, errJobNotOpen
 	}
 	cv, err := s.CVs.GetCV(ctx, in.CVID)
 	if err != nil {

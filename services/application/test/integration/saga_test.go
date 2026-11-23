@@ -13,7 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nuroqzavitex/smarthire/pkg/apperr"
 	"github.com/nuroqzavitex/smarthire/pkg/event"
+	"github.com/nuroqzavitex/smarthire/services/application/internal/adapter/postgres"
 	"github.com/nuroqzavitex/smarthire/services/application/internal/app"
 	"github.com/nuroqzavitex/smarthire/services/application/internal/domain"
 )
@@ -219,4 +221,28 @@ func TestSubmit_ConcurrentSameKeyOneRow(t *testing.T) {
 	}
 	assert.Equal(t, 1, count(t, `SELECT count(*) FROM applications WHERE candidate_id = $1`, cand))
 	assert.Equal(t, 1, count(t, `SELECT count(*) FROM saga_instances`))
+}
+
+// A job.closed consumed while Submit's transaction was still open finds no
+// saga to cancel; the recorded closed job still stops the saga.
+func TestSaga_JobClosedBeforeSagaExistedCompensates(t *testing.T) {
+	e := newEnv(t)
+	id := e.submit(t)
+	a, err := e.apps.Get(context.Background(), id)
+	require.NoError(t, err)
+	require.NoError(t, postgres.NewClosedJobRepo(pool).MarkClosed(context.Background(), a.JobID, e.clock.Now()))
+	require.NoError(t, postgres.NewClosedJobRepo(pool).MarkClosed(context.Background(), a.JobID, e.clock.Now()), "idempotent")
+
+	for range 2 {
+		_, err := e.svc.ProcessDue(context.Background())
+		require.NoError(t, err)
+	}
+	a, err = e.apps.Get(context.Background(), id)
+	require.NoError(t, err)
+	assert.Equal(t, domain.StatusCancelled, a.Status)
+	assert.Equal(t, domain.ReasonJobClosed, a.Reason)
+	assert.Empty(t, e.quota.reserved)
+
+	_, err = e.svc.Submit(asCandidate(uuid.New()), app.SubmitInput{JobID: a.JobID, CVID: uuid.New(), IdempotencyKey: "k"})
+	assert.ErrorIs(t, err, apperr.ErrConflict, "new applications to the closed job are refused")
 }

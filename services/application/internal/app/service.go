@@ -26,6 +26,7 @@ type Deps struct {
 	Sagas        SagaRepo
 	Outbox       OutboxWriter
 	Idem         Idempotency
+	ClosedJobs   ClosedJobs
 	Tx           TxManager
 	Jobs         Jobs
 	CVs          CVs

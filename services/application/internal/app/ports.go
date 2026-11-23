@@ -78,6 +78,14 @@ type SagaRepo interface {
 	CancelRunningForJob(ctx context.Context, jobID uuid.UUID, reason string, now time.Time) (int, error)
 }
 
+// ClosedJobs remembers jobs that were closed or deleted (terminal states),
+// so a submit racing a job.closed event is still caught.
+type ClosedJobs interface {
+	// MarkClosed is idempotent; it must run inside the consumer's tx.
+	MarkClosed(ctx context.Context, jobID uuid.UUID, at time.Time) error
+	IsClosed(ctx context.Context, jobID uuid.UUID) (bool, error)
+}
+
 // JobInfo is what the submit check needs from the job service.
 type JobInfo struct {
 	ID          uuid.UUID

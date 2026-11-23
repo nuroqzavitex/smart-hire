@@ -98,6 +98,13 @@ func (s *Service) runStep(ctx context.Context, sg domain.Saga) (err error) {
 }
 
 func (s *Service) reserveQuota(ctx context.Context, sg domain.Saga, now time.Time) outcome {
+	// job.closed may have been consumed before this saga's row was
+	// committed, finding nothing to cancel; it left the closed job behind.
+	if closed, err := s.ClosedJobs.IsClosed(ctx, sg.JobID); err != nil {
+		return retry(sg, err, now)
+	} else if closed {
+		return compensate(sg, domain.ReasonJobClosed, now)
+	}
 	if !now.Before(sg.DeadlineAt) {
 		return compensate(sg, domain.ReasonTimeout, now)
 	}

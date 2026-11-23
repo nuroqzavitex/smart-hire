@@ -196,6 +196,20 @@ func (f *fakeSagas) CancelRunningForJob(_ context.Context, jobID uuid.UUID, reas
 	return n, nil
 }
 
+type fakeClosed struct{ m map[uuid.UUID]time.Time }
+
+func (f *fakeClosed) MarkClosed(_ context.Context, jobID uuid.UUID, at time.Time) error {
+	if _, ok := f.m[jobID]; !ok {
+		f.m[jobID] = at
+	}
+	return nil
+}
+
+func (f *fakeClosed) IsClosed(_ context.Context, jobID uuid.UUID) (bool, error) {
+	_, ok := f.m[jobID]
+	return ok, nil
+}
+
 type fakeOutbox struct {
 	evs  []event.Envelope
 	keys []string
@@ -219,21 +233,22 @@ func (f *fakeIdem) Once(_ context.Context, id string) (bool, error) {
 
 // fakeTx restores every fake store when fn fails.
 type fakeTx struct {
-	apps  *fakeApps
-	sagas *fakeSagas
-	ob    *fakeOutbox
-	idem  *fakeIdem
+	apps   *fakeApps
+	sagas  *fakeSagas
+	ob     *fakeOutbox
+	idem   *fakeIdem
+	closed *fakeClosed
 }
 
 func (t fakeTx) WithTx(ctx context.Context, fn func(context.Context) error) error {
-	apps, sagas, seen := clone(t.apps.m), clone(t.sagas.m), clone(t.idem.seen)
+	apps, sagas, seen, closed := clone(t.apps.m), clone(t.sagas.m), clone(t.idem.seen), clone(t.closed.m)
 	hist := make(map[uuid.UUID][]domain.HistoryEntry, len(t.apps.history))
 	for k, v := range t.apps.history {
 		hist[k] = slices.Clone(v)
 	}
 	n := len(t.ob.evs)
 	if err := fn(ctx); err != nil {
-		t.apps.m, t.apps.history, t.sagas.m, t.idem.seen = apps, hist, sagas, seen
+		t.apps.m, t.apps.history, t.sagas.m, t.idem.seen, t.closed.m = apps, hist, sagas, seen, closed
 		t.ob.evs, t.ob.keys = t.ob.evs[:n], t.ob.keys[:n]
 		return err
 	}
@@ -325,6 +340,7 @@ type env struct {
 	sagas  *fakeSagas
 	ob     *fakeOutbox
 	idem   *fakeIdem
+	closed *fakeClosed
 	jobs   *fakeJobs
 	cvs    *fakeCVs
 	quota  *fakeQuota
@@ -350,6 +366,7 @@ func newEnv(t *testing.T) *env {
 		sagas:     &fakeSagas{m: map[uuid.UUID]domain.Saga{}},
 		ob:        &fakeOutbox{},
 		idem:      &fakeIdem{seen: map[string]bool{}},
+		closed:    &fakeClosed{m: map[uuid.UUID]time.Time{}},
 		jobs:      &fakeJobs{m: map[uuid.UUID]app.JobInfo{}},
 		cvs:       &fakeCVs{m: map[uuid.UUID]app.CVInfo{}},
 		quota:     &fakeQuota{},
@@ -365,7 +382,8 @@ func newEnv(t *testing.T) *env {
 		Sagas:               e.sagas,
 		Outbox:              e.ob,
 		Idem:                e.idem,
-		Tx:                  fakeTx{apps: e.apps, sagas: e.sagas, ob: e.ob, idem: e.idem},
+		Tx:                  fakeTx{apps: e.apps, sagas: e.sagas, ob: e.ob, idem: e.idem, closed: e.closed},
+		ClosedJobs:          e.closed,
 		Jobs:                e.jobs,
 		CVs:                 e.cvs,
 		Quota:               e.quota,
