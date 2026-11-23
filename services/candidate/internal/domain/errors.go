@@ -18,3 +18,10 @@ var (
 // internally by the result consumer, which ignores such events; it is never
 // returned to API callers.
 var ErrStaleResult = errors.New("stale parse result")
+
+// Quota errors of the internal ReserveQuota RPC (ADR 0011); the gRPC adapter
+// maps them to RESOURCE_EXHAUSTED and ABORTED for the application saga.
+var (
+	ErrQuotaExhausted      = errors.New("daily application quota exhausted")
+	ErrReservationReleased = errors.New("quota reservation already released")
+)

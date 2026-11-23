@@ -4,16 +4,25 @@ package grpc
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	candidatev1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/candidate/v1"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/app"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/domain"
 )
 
-// PublicMethods are the RPCs callable without an access token: none.
-var PublicMethods = []string{}
+// PublicMethods are the RPCs callable without an access token: only the
+// internal quota RPCs of the application saga, which have no HTTP route
+// (ADR 0011).
+var PublicMethods = []string{
+	candidatev1.CandidateService_ReserveQuota_FullMethodName,
+	candidatev1.CandidateService_ReleaseQuota_FullMethodName,
+}
 
 // UseCases is satisfied by *app.Service.
 type UseCases interface {
@@ -26,6 +35,8 @@ type UseCases interface {
 	UpdateParsedData(ctx context.Context, id uuid.UUID, p domain.ParsedCV) (domain.CV, error)
 	ReparseCV(ctx context.Context, id uuid.UUID) (domain.CV, error)
 	ListRecommendedJobs(ctx context.Context, cvID uuid.UUID, topK int) (app.RecommendedJobs, error)
+	ReserveQuota(ctx context.Context, appID, candidateID uuid.UUID) error
+	ReleaseQuota(ctx context.Context, appID uuid.UUID) error
 }
 
 // Handler implements candidatev1.CandidateServiceServer.
@@ -136,4 +147,39 @@ func (h *Handler) ListRecommendedJobs(ctx context.Context, req *candidatev1.List
 		return nil, err
 	}
 	return recommendationsToProto(recs), nil
+}
+
+// ReserveQuota holds one unit of the candidate's daily quota for an
+// application (internal, idempotent per application).
+func (h *Handler) ReserveQuota(ctx context.Context, req *candidatev1.ReserveQuotaRequest) (*emptypb.Empty, error) {
+	appID, err := parseID(req.GetApplicationId())
+	if err != nil {
+		return nil, err
+	}
+	cand, err := parseID(req.GetCandidateId())
+	if err != nil {
+		return nil, err
+	}
+	switch err := h.uc.ReserveQuota(ctx, appID, cand); {
+	case errors.Is(err, domain.ErrQuotaExhausted):
+		return nil, status.Error(codes.ResourceExhausted, err.Error())
+	case errors.Is(err, domain.ErrReservationReleased):
+		return nil, status.Error(codes.Aborted, err.Error())
+	case err != nil:
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// ReleaseQuota gives back an application's reservation (internal,
+// idempotent).
+func (h *Handler) ReleaseQuota(ctx context.Context, req *candidatev1.ReleaseQuotaRequest) (*emptypb.Empty, error) {
+	appID, err := parseID(req.GetApplicationId())
+	if err != nil {
+		return nil, err
+	}
+	if err := h.uc.ReleaseQuota(ctx, appID); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
 }

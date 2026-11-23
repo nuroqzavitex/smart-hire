@@ -47,6 +47,19 @@ type fakeUC struct {
 	parsed   domain.ParsedCV
 	recs     app.RecommendedJobs
 	topK     int
+	cand2    uuid.UUID
+}
+
+func (f *fakeUC) ReserveQuota(_ context.Context, appID, candidateID uuid.UUID) error {
+	f.calls++
+	f.id, f.cand2 = appID, candidateID
+	return f.err
+}
+
+func (f *fakeUC) ReleaseQuota(_ context.Context, appID uuid.UUID) error {
+	f.calls++
+	f.id = appID
+	return f.err
 }
 
 func (f *fakeUC) ListRecommendedJobs(_ context.Context, id uuid.UUID, topK int) (app.RecommendedJobs, error) {
@@ -165,7 +178,10 @@ func sampleCV(t *testing.T, st domain.Status, p *domain.ParsedCV) domain.CV {
 
 func TestHandler_RequiresToken(t *testing.T) {
 	e := newEnv(t)
-	assert.Empty(t, candgrpc.PublicMethods)
+	assert.ElementsMatch(t, []string{
+		candidatev1.CandidateService_ReserveQuota_FullMethodName,
+		candidatev1.CandidateService_ReleaseQuota_FullMethodName,
+	}, candgrpc.PublicMethods, "only the internal quota RPCs skip the token (ADR 0011)")
 	ctx := context.Background()
 	_, err := e.client.GetMyProfile(ctx, &candidatev1.GetMyProfileRequest{})
 	assert.Equal(t, codes.Unauthenticated, code(err))
@@ -420,4 +436,27 @@ func TestHandler_ListRecommendedJobsUnavailable(t *testing.T) {
 	e.uc.err = apperr.New(apperr.ErrUnavailable, "matching temporarily unavailable")
 	_, err := e.client.ListRecommendedJobs(e.candidateCtx(t), &candidatev1.ListRecommendedJobsRequest{Id: uuid.NewString()})
 	assert.Equal(t, codes.Unavailable, code(err))
+}
+
+func TestHandler_QuotaRPCs(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background() // internal RPCs: no token
+	appID, cand := uuid.New(), uuid.New()
+	_, err := e.client.ReserveQuota(ctx, &candidatev1.ReserveQuotaRequest{ApplicationId: appID.String(), CandidateId: cand.String()})
+	require.NoError(t, err)
+	assert.Equal(t, appID, e.uc.id)
+	assert.Equal(t, cand, e.uc.cand2)
+
+	e.uc.err = domain.ErrQuotaExhausted
+	_, err = e.client.ReserveQuota(ctx, &candidatev1.ReserveQuotaRequest{ApplicationId: appID.String(), CandidateId: cand.String()})
+	assert.Equal(t, codes.ResourceExhausted, code(err))
+	e.uc.err = domain.ErrReservationReleased
+	_, err = e.client.ReserveQuota(ctx, &candidatev1.ReserveQuotaRequest{ApplicationId: appID.String(), CandidateId: cand.String()})
+	assert.Equal(t, codes.Aborted, code(err))
+
+	e.uc.err = nil
+	_, err = e.client.ReleaseQuota(ctx, &candidatev1.ReleaseQuotaRequest{ApplicationId: appID.String()})
+	require.NoError(t, err)
+	_, err = e.client.ReleaseQuota(ctx, &candidatev1.ReleaseQuotaRequest{ApplicationId: "nope"})
+	assert.Equal(t, codes.InvalidArgument, code(err))
 }

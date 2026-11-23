@@ -38,6 +38,12 @@ type Cv struct {
 	UpdatedAt   time.Time
 }
 
+type DailyQuotum struct {
+	CandidateID uuid.UUID
+	Day         pgtype.Date
+	Used        int32
+}
+
 type Outbox struct {
 	ID          uuid.UUID
 	AggregateID string
@@ -51,4 +57,13 @@ type Outbox struct {
 type ProcessedEvent struct {
 	EventID     string
 	ProcessedAt time.Time
+}
+
+type QuotaReservation struct {
+	ApplicationID uuid.UUID
+	CandidateID   *uuid.UUID
+	Day           pgtype.Date
+	State         string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }

@@ -42,6 +42,10 @@ type Config struct {
 	AIBreakerOpen     time.Duration `env:"AI_BREAKER_OPEN" envDefault:"30s"`
 	JobAddr           string        `env:"JOB_ADDR" envDefault:"job:9002"`
 	JobTimeout        time.Duration `env:"JOB_TIMEOUT" envDefault:"2s"`
+
+	// DailyApplicationQuota caps applications per candidate per UTC day; the
+	// application saga reserves it through the internal quota RPCs (ADR 0011).
+	DailyApplicationQuota int `env:"DAILY_APPLICATION_QUOTA" envDefault:"10"`
 }
 
 // Load reads the server configuration from CANDIDATE_* variables.

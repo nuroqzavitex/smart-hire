@@ -33,6 +33,10 @@ type Deps struct {
 	// ListRecommendedJobs; nil means matching is unavailable (ADR 0010).
 	Recommender  Recommender
 	JobDirectory JobDirectory
+	// Quota and DailyQuota back the internal quota RPCs of the application
+	// saga (ADR 0011).
+	Quota      QuotaRepo
+	DailyQuota int
 }
 
 // Service implements the candidate use cases.

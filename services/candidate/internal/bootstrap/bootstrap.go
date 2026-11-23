@@ -138,6 +138,8 @@ func Run(ctx context.Context, cfg config.Config) error {
 		Logger:       log,
 		Recommender:  aiclient.New(aiConn, cfg.AIBreakerFailures, cfg.AIBreakerOpen, cfg.AITimeout),
 		JobDirectory: jobclient.New(jobConn, cfg.JobTimeout),
+		Quota:        postgres.NewQuotaRepo(pool),
+		DailyQuota:   cfg.DailyApplicationQuota,
 	})
 
 	results, err := kafka.NewConsumer(kafka.ConsumerConfig{
