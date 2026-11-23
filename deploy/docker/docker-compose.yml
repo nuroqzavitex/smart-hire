@@ -215,6 +215,8 @@ services:
       # fake = hashed bag of words, no network. Set gemini + AI_GEMINI_API_KEY in .env for real embeddings.
       AI_EMBEDDING_PROVIDER: ${AI_EMBEDDING_PROVIDER:-fake}
       AI_GEMINI_API_KEY: ${AI_GEMINI_API_KEY:-}
+      # Gemini model; changing it writes to new Qdrant collections (ADR 0010).
+      AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-gemini-embedding-001}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
       ai-migrate:
@@ -237,6 +239,8 @@ services:
       # Must match ai-matcher: the model version names the Qdrant collections.
       AI_EMBEDDING_PROVIDER: ${AI_EMBEDDING_PROVIDER:-fake}
       AI_GEMINI_API_KEY: ${AI_GEMINI_API_KEY:-}
+      # Gemini model; changing it writes to new Qdrant collections (ADR 0010).
+      AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-gemini-embedding-001}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/readyz', timeout=2)"]
