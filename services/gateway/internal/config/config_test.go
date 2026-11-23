@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"time"
+
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,6 +24,7 @@ func TestLoad_Defaults(t *testing.T) {
 	assert.Equal(t, 100, c.RateLimitUserPerMin)
 	assert.Equal(t, 10, c.RateLimitLoginPerMin)
 	assert.Equal(t, "info", c.LogLevel)
+	assert.Equal(t, time.Hour, c.DenylistTTL)
 }
 
 func TestLoad_Override(t *testing.T) {

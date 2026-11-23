@@ -21,6 +21,7 @@ import (
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
 	"github.com/nuroqzavitex/smarthire/pkg/otel"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/config"
+	"github.com/nuroqzavitex/smarthire/services/gateway/internal/denylist"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/ratelimit"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/router"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/wsproxy"
@@ -121,6 +122,7 @@ func run() error {
 		AppConn:       appConn,
 		NotifConn:     notifConn,
 		WSTickets:     wsproxy.NewTickets(rdb, wsTicketTTL),
+		Denylist:      denylist.New(rdb, cfg.DenylistTTL),
 		NotifWSURL:    notifWS,
 		Verifier:      verifier,
 		Limiter:       ratelimit.New(rdb),

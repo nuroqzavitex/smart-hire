@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"google.golang.org/grpc/codes"
@@ -72,4 +73,39 @@ func RequireAuth(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// DenyChecker reports whether a user's tokens are denied (internal/denylist).
+type DenyChecker interface {
+	Contains(ctx context.Context, userID string) (bool, error)
+}
+
+// Denylist runs after OptionalAuth: a verified token of a user whose account
+// is being deleted is marked auth-failed, so RejectInvalidAuth answers 401
+// (spec §6.5, ADR 0014). A Redis error fails open with a warning: access
+// tokens live 15 minutes and Auth already refuses refresh. A nil checker
+// disables the check.
+func Denylist(d DenyChecker, log *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if d == nil {
+			return next
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, ok := authz.ClaimsFrom(r.Context())
+			if !ok {
+				next.ServeHTTP(w, r)
+				return
+			}
+			denied, err := d.Contains(r.Context(), claims.Subject)
+			if err != nil {
+				log.WarnContext(r.Context(), "denylist check failed, allowing request", "err", err)
+			}
+			if denied {
+				ctx := context.WithValue(r.Context(), authFailedKey{}, true)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

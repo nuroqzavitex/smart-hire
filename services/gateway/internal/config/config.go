@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/nuroqzavitex/smarthire/pkg/config"
 )
@@ -27,6 +28,9 @@ type Config struct {
 	RateLimitUserPerMin  int      `env:"RATE_LIMIT_USER_PER_MIN" envDefault:"100"`
 	RateLimitLoginPerMin int      `env:"RATE_LIMIT_LOGIN_PER_MIN" envDefault:"10"`
 	LogLevel             string   `env:"LOG_LEVEL" envDefault:"info"`
+	// DenylistTTL must outlive the access-token TTL (15m): the tokens of a
+	// user who asked to delete the account stay denied that long (ADR 0014).
+	DenylistTTL time.Duration `env:"DENYLIST_TTL" envDefault:"1h"`
 }
 
 // Load reads the configuration from the environment (prefix GATEWAY).

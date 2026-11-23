@@ -1,6 +1,10 @@
 package middleware_test
 
 import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -105,4 +109,45 @@ func TestRequireAuth(t *testing.T) {
 	r = r.WithContext(authz.WithClaims(r.Context(), authz.Claims{Subject: "u"}))
 	h.ServeHTTP(httptest.NewRecorder(), r)
 	assert.True(t, called)
+}
+
+type fakeDenied struct {
+	ids map[string]bool
+	err error
+}
+
+func (f fakeDenied) Contains(_ context.Context, id string) (bool, error) { return f.ids[id], f.err }
+
+func TestDenylist_RejectsListedUser(t *testing.T) {
+	v, is := newVerifier(t)
+	var called bool
+	chain := func(d middleware.DenyChecker) http.Handler {
+		return middleware.OptionalAuth(v)(middleware.Denylist(d, slog.New(slog.NewTextHandler(io.Discard, nil)))(
+			middleware.RejectInvalidAuth(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))))
+	}
+	tok := "Bearer " + is.Sign(t, "user-1", authz.RoleCandidate, time.Minute)
+
+	called = false
+	w := serve(chain(fakeDenied{ids: map[string]bool{"user-1": true}}), tok)
+	assert.Equal(t, 401, w.Code)
+	assert.False(t, called)
+
+	called = false
+	w = serve(chain(fakeDenied{ids: map[string]bool{"user-2": true}}), tok)
+	assert.Equal(t, 200, w.Code)
+	assert.True(t, called, "other users pass")
+
+	called = false
+	w = serve(chain(fakeDenied{err: errors.New("redis down")}), tok)
+	assert.Equal(t, 200, w.Code)
+	assert.True(t, called, "fail open when Redis is down")
+
+	called = false
+	w = serve(chain(fakeDenied{err: errors.New("never asked")}), "")
+	assert.Equal(t, 200, w.Code)
+	assert.True(t, called, "anonymous requests skip the check")
+
+	called = false
+	w = serve(chain(nil), tok)
+	assert.Equal(t, 200, w.Code, "a nil checker disables the denylist")
 }

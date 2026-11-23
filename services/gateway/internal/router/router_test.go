@@ -37,6 +37,7 @@ import (
 	"github.com/nuroqzavitex/smarthire/pkg/authz/authztest"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/config"
+	"github.com/nuroqzavitex/smarthire/services/gateway/internal/denylist"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/ratelimit"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/router"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/wsproxy"
@@ -53,6 +54,8 @@ type fakeAuth struct {
 	refreshCalls  int
 	getMeMD       metadata.MD
 	getMeDeadline time.Time
+	// deletePassword is the password of the latest DeleteMe call.
+	deletePassword string
 }
 
 func (f *fakeAuth) Register(context.Context, *authv1.RegisterRequest) (*authv1.RegisterResponse, error) {
@@ -73,6 +76,16 @@ func (f *fakeAuth) GetMe(ctx context.Context, _ *authv1.GetMeRequest) (*authv1.U
 	f.getMeDeadline, _ = ctx.Deadline()
 	_ = grpc.SetHeader(ctx, metadata.Pairs("x-internal", "secret"))
 	return &authv1.User{Id: "u-1", Email: "a@x.com"}, nil
+}
+
+func (f *fakeAuth) DeleteMe(_ context.Context, r *authv1.DeleteMeRequest) (*authv1.DeleteMeResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deletePassword = r.GetPassword()
+	if r.GetPassword() != "password1" {
+		return nil, status.Error(codes.Unauthenticated, "invalid password")
+	}
+	return &authv1.DeleteMeResponse{DeletionRequestId: "d-1", Status: "PENDING"}, nil
 }
 
 func (f *fakeAuth) Login(context.Context, *authv1.LoginRequest) (*authv1.TokenPair, error) {
@@ -273,6 +286,7 @@ type env struct {
 	app   *fakeApplication
 	notif *fakeNotification
 	is    *authztest.KeyIssuer
+	mr    *miniredis.Miniredis
 }
 
 func setup(t *testing.T) *env {
@@ -365,6 +379,7 @@ func setup(t *testing.T) *env {
 		AppConn:       aconn,
 		NotifConn:     nconn,
 		WSTickets:     wsproxy.NewTickets(rdb, 30*time.Second),
+		Denylist:      denylist.New(rdb, time.Hour),
 		NotifWSURL:    wsURL,
 		Verifier:      v,
 		Limiter:       ratelimit.New(allowAll{}),
@@ -375,7 +390,7 @@ func setup(t *testing.T) *env {
 		Ready: func(context.Context) error { return nil },
 	})
 	require.NoError(t, err)
-	return &env{h: h, fake: fake, job: fj, cand: fc, app: fa, notif: fn, is: is}
+	return &env{h: h, fake: fake, job: fj, cand: fc, app: fa, notif: fn, is: is, mr: mr}
 }
 
 func (e *env) do(method, path, body string, hdr map[string]string) *httptest.ResponseRecorder {
@@ -809,4 +824,36 @@ func TestRouter_WebSocketThroughTicket(t *testing.T) {
 	_, msg, err := c.Read(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "hello "+sub, string(msg))
+}
+
+func TestRouter_DeleteMeReturns202AndDeniesTheToken(t *testing.T) {
+	e := setup(t)
+	tok := "Bearer " + e.is.Sign(t, "u-del", authz.RoleCandidate, time.Minute)
+	other := "Bearer " + e.is.Sign(t, "u-other", authz.RoleCandidate, time.Minute)
+	hdr := map[string]string{"Content-Type": "application/json", "Authorization": tok}
+
+	rec := e.do("DELETE", "/v1/me", `{"password":"wrong"}`, hdr)
+	require.Equal(t, 401, rec.Code, rec.Body.String())
+	assert.False(t, e.mr.Exists("gateway:denylist:user:u-del"), "a failed delete denies nothing")
+
+	rec = e.do("DELETE", "/v1/me", `{"password":"password1"}`, hdr)
+	require.Equal(t, 202, rec.Code, rec.Body.String())
+	assert.JSONEq(t, `{"deletion_request_id":"d-1","status":"PENDING"}`, rec.Body.String())
+	assert.Equal(t, "password1", e.fake.deletePassword)
+	assert.Equal(t, time.Hour, e.mr.TTL("gateway:denylist:user:u-del"))
+
+	rec = e.do("GET", "/v1/me", "", map[string]string{"Authorization": tok})
+	assert.Equal(t, 401, rec.Code, "the old token is denied")
+	rec = e.do("GET", "/v1/me", "", map[string]string{"Authorization": other})
+	assert.Equal(t, 200, rec.Code, "other users are unaffected")
+}
+
+func TestRouter_DeleteMeFailsWhenTheDenylistCannotBeWritten(t *testing.T) {
+	e := setup(t)
+	tok := "Bearer " + e.is.Sign(t, "u-del", authz.RoleCandidate, time.Minute)
+	e.mr.SetError("down")
+	rec := e.do("DELETE", "/v1/me", `{"password":"password1"}`,
+		map[string]string{"Content-Type": "application/json", "Authorization": tok})
+	assert.Equal(t, 500, rec.Code, "the client retries; DeleteMe is idempotent")
+	assert.NotContains(t, rec.Body.String(), "d-1")
 }

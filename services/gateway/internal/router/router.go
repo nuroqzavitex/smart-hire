@@ -28,10 +28,12 @@ import (
 	candidatev1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/candidate/v1"
 	jobv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1"
 	notificationv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/notification/v1"
+	"github.com/nuroqzavitex/smarthire/pkg/authz"
 	"github.com/nuroqzavitex/smarthire/pkg/grpcx"
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/authhttp"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/config"
+	"github.com/nuroqzavitex/smarthire/services/gateway/internal/denylist"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/httperr"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/middleware"
 	"github.com/nuroqzavitex/smarthire/services/gateway/internal/ratelimit"
@@ -49,10 +51,13 @@ type Deps struct {
 	// WSTickets and NotifWSURL back /v1/ws/ticket and /v1/ws (ADR 0012).
 	WSTickets  *wsproxy.Tickets
 	NotifWSURL *url.URL
-	Verifier   grpcx.TokenVerifier
-	Limiter    *ratelimit.Limiter
-	Cfg        config.Config
-	Ready      func(context.Context) error
+	// Denylist holds users whose account is being deleted (ADR 0014); nil
+	// disables it.
+	Denylist *denylist.Denylist
+	Verifier grpcx.TokenVerifier
+	Limiter  *ratelimit.Limiter
+	Cfg      config.Config
+	Ready    func(context.Context) error
 }
 
 // ParseTrustedProxies parses CIDRs (a bare IP is accepted as a single host).
@@ -112,7 +117,7 @@ func stripGRPCTimeout(next http.Handler) http.Handler {
 
 // New builds the gateway handler. Chain order (ruling R16):
 // Recovery, RequestID, otelhttp, Logging, CORS, ClientIP, OptionalAuth,
-// ratelimit, RejectInvalidAuth, routes (RejectInvalidAuth applies to every
+// Denylist, ratelimit, RejectInvalidAuth, routes (RejectInvalidAuth applies to every
 // route except the three cookie auth routes, ruling R19).
 func New(ctx context.Context, d Deps) (http.Handler, error) {
 	trusted, err := ParseTrustedProxies(d.Cfg.TrustedProxies)
@@ -132,6 +137,9 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 			return nil
 		}),
 		runtime.WithForwardResponseOption(func(ctx context.Context, w http.ResponseWriter, m proto.Message) error {
+			if method, _ := runtime.RPCMethod(ctx); method == authv1.AuthService_DeleteMe_FullMethodName {
+				return deleteMeAccepted(ctx, w, d.Denylist)
+			}
 			// Job is shared by CreateJob and GetJob, so CreateJob is
 			// recognised by RPC method rather than by message type.
 			if _, ok := m.(*authv1.RegisterResponse); ok {
@@ -193,6 +201,7 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 		}),
 		middleware.ClientIP(trusted),
 		middleware.OptionalAuth(d.Verifier),
+		middleware.Denylist(denyChecker(d.Denylist), d.Log),
 		ratelimit.Middleware(d.Limiter, d.Log, userRule, loginRule),
 	)
 
@@ -227,6 +236,28 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 		r.Handle("/v1/*", api)
 	})
 	return r, nil
+}
+
+// denyChecker avoids a typed-nil interface when the denylist is disabled.
+func denyChecker(d *denylist.Denylist) middleware.DenyChecker {
+	if d == nil {
+		return nil
+	}
+	return d
+}
+
+// deleteMeAccepted denies the caller's tokens before answering 202: the
+// account is DELETION_PENDING from now on (ADR 0014). When Redis fails the
+// request fails (500) and the client retries; DeleteMe is idempotent.
+func deleteMeAccepted(ctx context.Context, w http.ResponseWriter, d *denylist.Denylist) error {
+	claims, ok := authz.ClaimsFrom(ctx)
+	if d != nil && ok {
+		if err := d.Add(ctx, claims.Subject); err != nil {
+			return err
+		}
+	}
+	w.WriteHeader(http.StatusAccepted)
+	return nil
 }
 
 // ConnsReady reports not-ready when any connection is nil or shut down.
