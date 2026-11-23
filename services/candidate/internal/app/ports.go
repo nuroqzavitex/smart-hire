@@ -21,6 +21,9 @@ type TxManager interface {
 // OutboxWriter stores an event in the transactional outbox.
 type OutboxWriter interface {
 	Write(ctx context.Context, e event.Envelope, aggregateID string) error
+	// DeleteCVUpdates removes the CV's cv.updated rows, published or not:
+	// they hold the parsed CV (account deletion, ADR 0014).
+	DeleteCVUpdates(ctx context.Context, aggregateID string) error
 }
 
 // Idempotency records processed event IDs. Once must run inside the tx

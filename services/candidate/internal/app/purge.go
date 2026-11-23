@@ -44,6 +44,9 @@ func (s *Service) HandleUserDeleted(ctx context.Context, env event.Envelope) err
 			if err := s.CVs.Update(ctx, cv); err != nil {
 				return fmt.Errorf("tombstone cv: %w", err)
 			}
+			if err := s.Outbox.DeleteCVUpdates(ctx, cv.ID.String()); err != nil {
+				return fmt.Errorf("drop cv.updated outbox rows: %w", err)
+			}
 			if err := s.emitUpdated(ctx, cv, now); err != nil {
 				return err
 			}

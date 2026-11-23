@@ -224,10 +224,18 @@ func (f *fakeStorage) put(key string, o object) {
 }
 
 type fakeOutbox struct {
-	mu   sync.Mutex
-	evs  []event.Envelope
-	keys []string
-	err  error
+	mu               sync.Mutex
+	evs              []event.Envelope
+	keys             []string
+	err              error
+	purgedAggregates []string
+}
+
+func (f *fakeOutbox) DeleteCVUpdates(_ context.Context, aggregateID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.purgedAggregates = append(f.purgedAggregates, aggregateID)
+	return nil
 }
 
 func (f *fakeOutbox) Write(_ context.Context, e event.Envelope, key string) error {

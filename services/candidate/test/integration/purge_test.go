@@ -25,12 +25,18 @@ func TestPurge_RemovesFilesProfileAndQuota(t *testing.T) {
 	require.Equal(t, http.StatusOK, put(t, tk.URL, "application/pdf", []byte(samplePDF)))
 	cv, err := svc.CompleteUpload(ctx, tk.CVID)
 	require.NoError(t, err)
+	require.NoError(t, svc.HandleParseResult(context.Background(), parsedEvent(t, cv, cv.AttemptID, fullParsedCV(t))))
 	user := cv.CandidateID
 	_, err = svc.UpsertProfile(ctx, domain.ProfileInput{FullName: "Nguyen Van A"})
 	require.NoError(t, err)
 	require.NoError(t, svc.ReserveQuota(context.Background(), uuid.New(), user))
 	other := uuid.New()
 	require.NoError(t, svc.ReserveQuota(context.Background(), uuid.New(), other))
+
+	var before int
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM outbox WHERE event_type = 'cv.updated' AND aggregate_id = $1`, cv.ID.String()).Scan(&before))
+	require.Positive(t, before, "the parse wrote a cv.updated with the parsed CV")
 
 	env, err := userdeletion.NewDeletedEvent(context.Background(), userdeletion.Deleted{
 		UserID: user, Role: "candidate", RequestID: uuid.New(), RequestedAt: time.Now(),
@@ -70,6 +76,11 @@ func TestPurge_RemovesFilesProfileAndQuota(t *testing.T) {
 	require.NoError(t, pool.QueryRow(context.Background(),
 		`SELECT count(*) FROM outbox WHERE event_type = $1`, userdeletion.TopicPurged).Scan(&n))
 	assert.Equal(t, 1, n)
+
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM outbox WHERE event_type = 'cv.updated' AND aggregate_id = $1
+		 AND payload->'payload'->>'status' <> 'DELETED'`, cv.ID.String()).Scan(&n))
+	assert.Zero(t, n, "older cv.updated rows are gone")
 
 	page, err := svc.ListMyCVs(ctx, app.PageRequest{Size: 10})
 	require.NoError(t, err)

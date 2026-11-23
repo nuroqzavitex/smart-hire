@@ -85,6 +85,8 @@ func TestHandleUserDeleted_DeletesFilesTombstonesAndConfirms(t *testing.T) {
 	assert.Equal(t, u1, p.UserID)
 	assert.Equal(t, "candidate-service", purged[0].Source)
 	assert.Equal(t, u1.String(), e.ob.lastKey(), "keyed by user")
+	assert.ElementsMatch(t, []string{parsed.ID.String(), pending.ID.String()}, e.ob.purgedAggregates,
+		"older cv.updated rows (they hold the parsed CV) are dropped")
 }
 
 func TestHandleUserDeleted_Idempotent(t *testing.T) {
