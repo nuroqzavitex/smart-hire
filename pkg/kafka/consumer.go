@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/nuroqzavitex/smarthire/pkg/event"
@@ -38,8 +39,9 @@ type ConsumerConfig struct {
 // Consumer is a consumer-group member with manual commits, in-process retry
 // and DLQ.
 type Consumer struct {
-	cl  *kgo.Client
-	cfg ConsumerConfig
+	cl      *kgo.Client
+	cfg     ConsumerConfig
+	metrics consumerMetrics
 }
 
 // NewConsumer builds the client; the group is joined on the first poll.
@@ -79,11 +81,16 @@ func NewConsumer(cfg ConsumerConfig) (*Consumer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("kafka consumer: %w", err)
 	}
-	return &Consumer{cl: cl, cfg: cfg}, nil
+	c := &Consumer{cl: cl, cfg: cfg}
+	c.metrics = c.newConsumerMetrics()
+	return c, nil
 }
 
 // Close leaves the group and closes the client.
-func (c *Consumer) Close() { c.cl.Close() }
+func (c *Consumer) Close() {
+	c.metrics.close()
+	c.cl.Close()
+}
 
 // pollBatch bounds how many records are processed between rebalance windows.
 // Rebalances are blocked while a batch is in flight (BlockRebalanceOnPoll), so
@@ -208,6 +215,9 @@ func (c *Consumer) dlq(ctx context.Context, rec *kgo.Record, cause error, attemp
 		Headers: dlqRecordHeaders(rec.Headers, rec, cause, attempts)}
 	if err := c.cl.ProduceSync(ctx, out).FirstErr(); err != nil {
 		return fmt.Errorf("dlq %s: %w", out.Topic, err)
+	}
+	if c.metrics.dlq != nil {
+		c.metrics.dlq.Add(ctx, 1, metric.WithAttributes(attribute.String("topic", rec.Topic)))
 	}
 	c.cfg.Logger.Error("kafka record sent to dlq", "topic", rec.Topic, "partition", rec.Partition,
 		"offset", rec.Offset, "attempts", attempts)

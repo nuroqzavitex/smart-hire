@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	aiv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/ai/v1"
+	"github.com/nuroqzavitex/smarthire/pkg/otel/oteltest"
 	"github.com/nuroqzavitex/smarthire/services/application/internal/adapter/aiclient"
 	"github.com/nuroqzavitex/smarthire/services/application/internal/app"
 )
@@ -123,4 +124,17 @@ func TestAI_CallerCancelDoesNotTrip(t *testing.T) {
 	ai.delay.Store(0)
 	_, err := c.Score(context.Background(), uuid.New(), uuid.New())
 	require.NoError(t, err, "breaker still closed")
+}
+
+func TestAI_BreakerStateMetric(t *testing.T) {
+	m := oteltest.Install(t)
+	c := start(t, &fakeAI{err: status.Error(codes.Unavailable, "down")}, time.Second)
+	v, ok := m.Int64(t, "circuit_breaker.state", "breaker", "application-ai-score")
+	require.True(t, ok, "closed state recorded at construction")
+	assert.Zero(t, v)
+	for range 5 {
+		_, _ = c.Score(context.Background(), uuid.New(), uuid.New())
+	}
+	v, _ = m.Int64(t, "circuit_breaker.state", "breaker", "application-ai-score")
+	assert.Equal(t, int64(2), v)
 }

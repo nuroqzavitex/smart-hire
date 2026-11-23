@@ -18,6 +18,7 @@ import (
 
 	aiv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/ai/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/apperr"
+	"github.com/nuroqzavitex/smarthire/pkg/otel/oteltest"
 	"github.com/nuroqzavitex/smarthire/services/candidate/internal/adapter/aiclient"
 )
 
@@ -100,4 +101,15 @@ func TestClient_NotMatchedYetIsEmptyNotError(t *testing.T) {
 		assert.Empty(t, got.Jobs)
 	}
 	assert.Equal(t, int32(5), ai.calls.Load(), "not found does not trip the breaker")
+}
+
+func TestClient_BreakerStateMetric(t *testing.T) {
+	m := oteltest.Install(t)
+	c := start(t, &fakeAI{err: status.Error(codes.Unavailable, "down")})
+	for range 4 {
+		_, _ = c.RecommendJobs(context.Background(), uuid.New(), 0)
+	}
+	v, ok := m.Int64(t, "circuit_breaker.state", "breaker", "candidate-ai-matching")
+	require.True(t, ok)
+	assert.Equal(t, int64(2), v)
 }

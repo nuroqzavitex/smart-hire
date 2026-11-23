@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	aiv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/ai/v1"
+	pkgotel "github.com/nuroqzavitex/smarthire/pkg/otel"
 	"github.com/nuroqzavitex/smarthire/services/application/internal/app"
 )
 
@@ -44,9 +45,11 @@ func New(conn grpc.ClientConnInterface, failures uint32, open, timeout time.Dura
 		ReadyToTrip:  func(c gobreaker.Counts) bool { return c.ConsecutiveFailures >= failures },
 		IsSuccessful: healthy,
 		OnStateChange: func(name string, from, to gobreaker.State) {
+			pkgotel.RecordBreakerState(context.Background(), name, pkgotel.BreakerStateFromString(to.String()))
 			log.Warn("circuit breaker state changed", "breaker", name, "from", from.String(), "to", to.String())
 		},
 	})
+	pkgotel.RecordBreakerState(context.Background(), "application-ai-score", pkgotel.BreakerClosed)
 	return &Client{ai: aiv1.NewAIServiceClient(conn), cb: cb, timeout: timeout}
 }
 

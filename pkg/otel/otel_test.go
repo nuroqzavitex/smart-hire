@@ -67,3 +67,9 @@ func find(t *testing.T, rm metricdata.ResourceMetrics, name string) metricdata.M
 	t.Fatalf("metric %s not found", name)
 	return metricdata.Metrics{}
 }
+
+func TestBreakerStateFromString(t *testing.T) {
+	assert.Equal(t, otel.BreakerOpen, otel.BreakerStateFromString("open"))
+	assert.Equal(t, otel.BreakerHalfOpen, otel.BreakerStateFromString("half-open"))
+	assert.Equal(t, otel.BreakerClosed, otel.BreakerStateFromString("closed"))
+}

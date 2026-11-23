@@ -19,6 +19,7 @@ import (
 
 	aiv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/ai/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/apperr"
+	"github.com/nuroqzavitex/smarthire/pkg/otel/oteltest"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/aiclient"
 )
 
@@ -137,4 +138,17 @@ func TestClient_CallerCancelDoesNotTrip(t *testing.T) {
 	ai.delay.Store(0)
 	_, err := c.FindCandidates(context.Background(), uuid.New(), 0)
 	require.NoError(t, err, "breaker still closed")
+}
+
+func TestClient_BreakerStateMetric(t *testing.T) {
+	m := oteltest.Install(t)
+	c := start(t, &fakeAI{err: status.Error(codes.Unavailable, "down")})
+	v, ok := m.Int64(t, "circuit_breaker.state", "breaker", "job-ai-matching")
+	require.True(t, ok, "closed state recorded at construction")
+	assert.Zero(t, v)
+	for range 3 {
+		_, _ = c.FindCandidates(context.Background(), uuid.New(), 0)
+	}
+	v, _ = m.Int64(t, "circuit_breaker.state", "breaker", "job-ai-matching")
+	assert.Equal(t, int64(2), v)
 }

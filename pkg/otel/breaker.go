@@ -29,3 +29,15 @@ func RecordBreakerState(ctx context.Context, breaker string, state int64) {
 	}
 	g.Record(ctx, state, metric.WithAttributes(attribute.String("breaker", breaker)))
 }
+
+// BreakerStateFromString maps a breaker library's state name ("closed",
+// "half-open", "open", as gobreaker's State.String returns) to the gauge value.
+func BreakerStateFromString(s string) int64 {
+	switch s {
+	case "open":
+		return BreakerOpen
+	case "half-open":
+		return BreakerHalfOpen
+	}
+	return BreakerClosed
+}

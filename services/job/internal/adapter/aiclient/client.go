@@ -18,6 +18,7 @@ import (
 
 	aiv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/ai/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/apperr"
+	pkgotel "github.com/nuroqzavitex/smarthire/pkg/otel"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/app"
 )
 
@@ -32,12 +33,16 @@ type Client struct {
 // call through after open, and bounds each call by timeout.
 func New(conn grpc.ClientConnInterface, failures uint32, open, timeout time.Duration) *Client {
 	cb := gobreaker.NewCircuitBreaker[*aiv1.FindCandidatesResponse](gobreaker.Settings{
+		OnStateChange: func(name string, _, to gobreaker.State) {
+			pkgotel.RecordBreakerState(context.Background(), name, pkgotel.BreakerStateFromString(to.String()))
+		},
 		Name:         "job-ai-matching",
 		MaxRequests:  1,
 		Timeout:      open,
 		ReadyToTrip:  func(c gobreaker.Counts) bool { return c.ConsecutiveFailures >= failures },
 		IsSuccessful: healthy,
 	})
+	pkgotel.RecordBreakerState(context.Background(), "job-ai-matching", pkgotel.BreakerClosed)
 	return &Client{ai: aiv1.NewAIServiceClient(conn), cb: cb, timeout: timeout}
 }
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/sony/gobreaker/v2"
 
+	pkgotel "github.com/nuroqzavitex/smarthire/pkg/otel"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/app"
 )
 
@@ -22,6 +23,9 @@ type Guarded struct {
 // trial request through after open has elapsed, and gives each call timeout.
 func NewGuarded(inner app.SearchBackend, failures uint32, open, timeout time.Duration) *Guarded {
 	cb := gobreaker.NewCircuitBreaker[app.SearchResult](gobreaker.Settings{
+		OnStateChange: func(name string, _, to gobreaker.State) {
+			pkgotel.RecordBreakerState(context.Background(), name, pkgotel.BreakerStateFromString(to.String()))
+		},
 		Name:        "job-search-opensearch",
 		MaxRequests: 1,
 		Timeout:     open,
@@ -33,6 +37,7 @@ func NewGuarded(inner app.SearchBackend, failures uint32, open, timeout time.Dur
 			return err == nil || errors.As(err, &gone)
 		},
 	})
+	pkgotel.RecordBreakerState(context.Background(), "job-search-opensearch", pkgotel.BreakerClosed)
 	return &Guarded{inner: inner, cb: cb, timeout: timeout}
 }
 

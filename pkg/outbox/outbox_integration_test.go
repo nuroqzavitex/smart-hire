@@ -29,6 +29,8 @@ import (
 	"github.com/nuroqzavitex/smarthire/pkg/internal/testinfra"
 	"github.com/nuroqzavitex/smarthire/pkg/kafka"
 	"github.com/nuroqzavitex/smarthire/pkg/outbox"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 var (
@@ -387,4 +389,30 @@ func TestRelay_StopsPromptlyWhenBrokerDown(t *testing.T) {
 		t.Fatal("Run did not stop")
 	}
 	assert.Equal(t, 1, pending(t))
+}
+
+func TestPendingGauge_CountsUnpublished(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	write(t, ctx, f, 3)
+	_, err := pool.Exec(ctx, `UPDATE outbox SET published_at = now() WHERE id = (SELECT id FROM outbox LIMIT 1)`)
+	require.NoError(t, err)
+
+	r := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(r))
+	reg, err := outbox.RegisterPendingGauge(mp.Meter("test"), pool)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reg.Unregister() })
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, r.Collect(ctx, &rm))
+	var got int64 = -1
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name == "outbox.pending" {
+				got = m.Data.(metricdata.Gauge[int64]).DataPoints[0].Value
+			}
+		}
+	}
+	assert.Equal(t, int64(2), got)
 }

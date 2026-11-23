@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nuroqzavitex/smarthire/pkg/otel/oteltest"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/opensearch"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/app"
 )
@@ -101,4 +102,20 @@ func TestGuarded_OwnTimeoutStillTrips(t *testing.T) {
 		_, _ = g.Search(context.Background(), app.SearchQuery{})
 	}
 	assert.Equal(t, int32(2), calls.Load(), "a slow opensearch opens the breaker")
+}
+
+func TestGuarded_BreakerStateMetric(t *testing.T) {
+	m := oteltest.Install(t)
+	inner := backendFunc(func(context.Context, app.SearchQuery) (app.SearchResult, error) {
+		return app.SearchResult{}, errors.New("connection refused")
+	})
+	g := opensearch.NewGuarded(inner, 2, time.Minute, time.Second)
+	v, ok := m.Int64(t, "circuit_breaker.state", "breaker", "job-search-opensearch")
+	require.True(t, ok, "closed state recorded at construction")
+	assert.Zero(t, v)
+	for range 2 {
+		_, _ = g.Search(context.Background(), app.SearchQuery{})
+	}
+	v, _ = m.Int64(t, "circuit_breaker.state", "breaker", "job-search-opensearch")
+	assert.Equal(t, int64(2), v)
 }

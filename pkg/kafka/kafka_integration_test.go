@@ -28,6 +28,8 @@ import (
 	"github.com/nuroqzavitex/smarthire/pkg/event"
 	"github.com/nuroqzavitex/smarthire/pkg/internal/testinfra"
 	"github.com/nuroqzavitex/smarthire/pkg/kafka"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 var broker string
@@ -646,4 +648,82 @@ func TestRebalanceKeepsPerKeyOrder(t *testing.T) {
 		assert.LessOrEqual(t, replays, 1, "key %s: more than one replay (%v)", k, s)
 		assert.Len(t, have, perKey, "key %s missing records", k)
 	}
+}
+
+// installMetrics points the global meter provider at a manual reader for the
+// test (consumers create their instruments from the global provider).
+func installMetrics(t *testing.T) *sdkmetric.ManualReader {
+	t.Helper()
+	r := sdkmetric.NewManualReader()
+	prev := otel.GetMeterProvider()
+	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(r)))
+	t.Cleanup(func() { otel.SetMeterProvider(prev) })
+	return r
+}
+
+// metricPoints returns the int64 data points of a sum or gauge by name.
+func metricPoints(t *testing.T, r *sdkmetric.ManualReader, name string) []metricdata.DataPoint[int64] {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, r.Collect(context.Background(), &rm))
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			switch d := m.Data.(type) {
+			case metricdata.Sum[int64]:
+				return d.DataPoints
+			case metricdata.Gauge[int64]:
+				return d.DataPoints
+			}
+		}
+	}
+	return nil
+}
+
+func TestDLQ_CountsByTopic(t *testing.T) {
+	r := installMetrics(t)
+	f := newFixture(t, true)
+	startConsumer(t, f, func(context.Context, event.Envelope, *kgo.Record) error {
+		return kafka.Permanent(fmt.Errorf("nope"))
+	})
+	require.NoError(t, newProducer(t).Produce(context.Background(), kafka.Record{Topic: f.topic, Key: []byte("k"), Value: mustEnv(t, 1)}))
+	require.Len(t, readAll(t, f.dlq, 1), 1)
+	eventually(t, func() bool {
+		for _, p := range metricPoints(t, r, "dlq.messages") {
+			if v, _ := p.Attributes.Value("topic"); v.AsString() == f.topic && p.Value == 1 {
+				return true
+			}
+		}
+		return false
+	}, "dlq.messages{topic} = 1")
+}
+
+func TestConsumerLag_Observed(t *testing.T) {
+	r := installMetrics(t)
+	f := newFixture(t, false)
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	startConsumer(t, f, func(ctx context.Context, _ event.Envelope, _ *kgo.Record) error {
+		select { // hold the first record: nothing gets committed
+		case <-release:
+		case <-ctx.Done():
+		}
+		return ctx.Err()
+	})
+	p := newProducer(t)
+	for i := range 5 {
+		require.NoError(t, p.Produce(context.Background(), kafka.Record{Topic: f.topic, Key: []byte(fmt.Sprint(i)), Value: mustEnv(t, i)}))
+	}
+	eventually(t, func() bool {
+		for _, dp := range metricPoints(t, r, "kafka.consumer.lag") {
+			g, _ := dp.Attributes.Value("group")
+			tp, _ := dp.Attributes.Value("topic")
+			if g.AsString() == f.group && tp.AsString() == f.topic && dp.Value == 5 {
+				return true
+			}
+		}
+		return false
+	}, "kafka.consumer.lag{group,topic} = 5")
 }

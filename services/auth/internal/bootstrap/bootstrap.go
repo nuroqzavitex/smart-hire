@@ -145,6 +145,12 @@ func Run(ctx context.Context, cfg config.Config) error {
 	grpcErr := make(chan error, 1)
 	go func() { grpcErr <- grpcx.Serve(runCtx, grpcSrv, grpcLis) }()
 
+	// outbox.pending for the backlog alert (ADR 0013).
+	if reg, err := outbox.RegisterPendingGauge(otel.Meter(serviceName), pool); err != nil {
+		log.Warn("outbox gauge not registered", "err", err)
+	} else {
+		defer func() { _ = reg.Unregister() }()
+	}
 	relay := outbox.NewRelay(pool, producer, outbox.RelayOptions{Interval: cfg.OutboxInterval, Logger: log})
 	relayDone := make(chan error, 1)
 	go func() { relayDone <- relay.Run(runCtx) }()
