@@ -109,11 +109,11 @@ opensearch-image:
 	$(COMPOSE) build opensearch
 
 infra-up: minio-image opensearch-image
-	$(COMPOSE) up -d --wait postgres redis redpanda redpanda-console minio opensearch qdrant
+	$(COMPOSE) up -d --wait postgres redis redpanda redpanda-console minio opensearch qdrant mailpit
 	$(COMPOSE) run --rm topics-init && $(COMPOSE) run --rm minio-init
 
 obs-up:
-	$(COMPOSE) up -d otel-collector tempo grafana
+	$(COMPOSE) up -d otel-collector tempo loki prometheus grafana
 
 # Builds and starts everything, then waits until the gateway listens (it only
 # starts serving once it has fetched the auth JWKS) and until a job RPC
@@ -144,6 +144,12 @@ up:
 		sleep 1; \
 	done; \
 	echo "application service did not become reachable"; $(COMPOSE) logs --tail=50 application gateway; exit 1
+	@echo "waiting for notification service at $(GATEWAY_URL)/v1/notifications"; \
+	for i in $$(seq 1 60); do \
+		test "$$(curl -s -o /dev/null -w '%{http_code}' $(GATEWAY_URL)/v1/notifications)" = 401 && { echo "notification service is up"; exit 0; }; \
+		sleep 1; \
+	done; \
+	echo "notification service did not become reachable"; $(COMPOSE) logs --tail=50 notification gateway; exit 1
 
 down:
 	$(COMPOSE) --profile tools down
@@ -157,6 +163,7 @@ down-v:
 migrate:
 	$(COMPOSE) run --rm auth-migrate && $(COMPOSE) run --rm job-migrate && \
 		$(COMPOSE) run --rm candidate-migrate && $(COMPOSE) run --rm application-migrate && \
+		$(COMPOSE) run --rm notification-migrate && \
 		$(COMPOSE) run --rm ai-migrate
 
 # Postgres init scripts only run on a fresh volume: creates application_db
@@ -164,6 +171,7 @@ migrate:
 db-init:
 	$(COMPOSE) up -d --wait postgres
 	$(COMPOSE) exec -T postgres psql -U postgres -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/05-create-application-db.sql
+	$(COMPOSE) exec -T postgres psql -U postgres -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/06-create-notification-db.sql
 
 seed:
 	$(COMPOSE) run --rm auth-seed

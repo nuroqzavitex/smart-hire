@@ -45,6 +45,8 @@ jobs:
               - 'deploy/docker/minio/**'
             application:
               - 'services/application/**'
+            notification:
+              - 'services/notification/**'
             tools:
               - 'tools/**'
       # Changes in pkg/, gen/ (or the workspace) run every module.
@@ -57,6 +59,7 @@ jobs:
           JOB: ${{ steps.filter.outputs.job }}
           CANDIDATE: ${{ steps.filter.outputs.candidate }}
           APPLICATION: ${{ steps.filter.outputs.application }}
+          NOTIFICATION: ${{ steps.filter.outputs.notification }}
           TOOLS: ${{ steps.filter.outputs.tools }}
         run: |
           mods=()
@@ -66,6 +69,7 @@ jobs:
           if [ "$SHARED" = "true" ] || [ "$JOB" = "true" ]; then mods+=(services/job); fi
           if [ "$SHARED" = "true" ] || [ "$CANDIDATE" = "true" ]; then mods+=(services/candidate); fi
           if [ "$SHARED" = "true" ] || [ "$APPLICATION" = "true" ]; then mods+=(services/application); fi
+          if [ "$SHARED" = "true" ] || [ "$NOTIFICATION" = "true" ]; then mods+=(services/notification); fi
           if [ "$SHARED" = "true" ] || [ "$TOOLS" = "true" ]; then mods+=(tools); fi
           if [ ${#mods[@]} -eq 0 ]; then
             json='[]'
@@ -135,6 +139,9 @@ jobs:
       - name: Coverage gate (application)
         if: matrix.module == 'services/application'
         run: make cover-application
+      - name: Coverage gate (notification)
+        if: matrix.module == 'services/notification'
+        run: make cover-notification
 
   docker:
     needs: changes
@@ -143,7 +150,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [auth, gateway, job, candidate, application]
+        service: [auth, gateway, job, candidate, application, notification]
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v4

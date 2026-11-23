@@ -1,0 +1,55 @@
+# SmartHire alert rules (spec §14.5, ADR 0013). Metric names are the OTel
+# instrument names as the collector's Prometheus exporter writes them.
+groups:
+  - name: smarthire
+    rules:
+      - alert: KafkaConsumerLagHigh
+        expr: max by (group) (kafka_consumer_lag) > 1000
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Consumer group {{ $labels.group }} is {{ $value }} records behind"
+
+      - alert: DLQMessages
+        expr: sum by (topic) (increase(dlq_messages_total[5m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Records from {{ $labels.topic }} went to its dead-letter topic"
+
+      # Server-side failures only; client errors (auth, validation, not found)
+      # are not the service's fault.
+      - alert: GRPCErrorRateHigh
+        expr: |
+          sum(rate(rpc_server_call_duration_seconds_count{rpc_response_status_code=~"INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED|UNKNOWN|DATA_LOSS"}[5m]))
+            / sum(rate(rpc_server_call_duration_seconds_count[5m])) > 0.02
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "More than 2% of gRPC calls fail on the server side"
+
+      - alert: CircuitBreakerOpen
+        expr: max by (breaker) (circuit_breaker_state) == 2
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Circuit breaker {{ $labels.breaker }} has been open for 2 minutes"
+
+      - alert: OutboxBacklog
+        expr: max by (service_name) (outbox_pending) > 500
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.service_name }} has {{ $value }} unpublished outbox events"
+
+      - alert: ProjectionLagHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(projection_lag_seconds_bucket[5m]))) > 30
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Job search read model lags {{ $value }}s behind (p95)"
+
+      - alert: EmailFailed
+        expr: increase(emails_failed_total[15m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Emails were given up after all retries"

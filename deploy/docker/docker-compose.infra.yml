@@ -14,6 +14,8 @@ services:
       AI_DB_PASSWORD: ${AI_DB_PASSWORD:?set AI_DB_PASSWORD in .env}
       # Read by init/postgres/05-create-application-db.sql (application_svc role).
       APPLICATION_DB_PASSWORD: ${APPLICATION_DB_PASSWORD:?set APPLICATION_DB_PASSWORD in .env}
+      # Read by init/postgres/06-create-notification-db.sql (notification_svc role).
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?set NOTIFICATION_DB_PASSWORD in .env}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init/postgres:/docker-entrypoint-initdb.d:ro
@@ -70,6 +72,14 @@ services:
     restart: unless-stopped
 
   # Built locally from the official GitHub source (ruling E-R2, ADR 0008):
+  # Dev SMTP server for the notification service (ADR 0012); web UI and API
+  # on :8025, SMTP on mailpit:1025 inside the network. Nothing leaves it.
+  mailpit:
+    image: axllent/mailpit:v1.27.4
+    ports:
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+
   # minio RELEASE.2025-04-22T22-12-26Z + mc RELEASE.2025-04-16T18-13-26Z.
   minio:
     image: &minio-image smarthire/minio:RELEASE.2025-04-22T22-12-26Z
