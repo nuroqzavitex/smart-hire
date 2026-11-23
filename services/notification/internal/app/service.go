@@ -56,8 +56,22 @@ func NewService(d Deps) *Service {
 	if d.EmailBatch == 0 {
 		d.EmailBatch = 10
 	}
+	// Export the email counters at 0 from the start so increase() in the
+	// EmailFailed alert sees the first failure.
+	for _, c := range []struct{ name, desc string }{
+		{"emails.sent", emailsSentDesc}, {"emails.failed", emailsFailedDesc},
+	} {
+		if ctr, err := pkgotel.Meter(meterName).Int64Counter(c.name, metric.WithDescription(c.desc)); err == nil {
+			ctr.Add(context.Background(), 0)
+		}
+	}
 	return &Service{Deps: d}
 }
+
+const (
+	emailsSentDesc   = "Emails delivered to the SMTP server"
+	emailsFailedDesc = "Emails given up after all retries"
+)
 
 // count adds 1 to an int64 counter of the global meter provider.
 func count(ctx context.Context, name, desc string, attrs ...attribute.KeyValue) {

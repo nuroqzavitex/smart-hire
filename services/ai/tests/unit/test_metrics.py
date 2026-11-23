@@ -115,3 +115,12 @@ def test_anthropic_records_token_usage() -> None:
     AnthropicLlmParser(FakeClient(raw), MODEL, instruments=ins).parse("cv text")  # type: ignore[arg-type]
     got = {p.attributes["direction"]: p.value for p in _points(reader, "ai.llm.tokens")}
     assert got == {"input": 1200, "output": 340}
+
+
+def test_parse_duration_uses_second_buckets() -> None:
+    from ai_service.metrics import PARSE_BUCKETS
+
+    ins, reader = _instruments()
+    ins.parse_duration(3.0, outcome="parsed")
+    [p] = _points(reader, "ai.parse.duration")
+    assert list(p.explicit_bounds) == PARSE_BUCKETS

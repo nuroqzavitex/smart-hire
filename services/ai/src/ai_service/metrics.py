@@ -6,6 +6,9 @@ meter provider that ``setup_otel`` installs (a no-op one until then).
 
 from opentelemetry import metrics
 
+# Seconds; LLM parses take from under a second (fake) to tens of seconds.
+PARSE_BUCKETS = [0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0]
+
 
 class Instruments:
     """ai.parse.duration, ai.match.score, ai.llm.tokens and dlq.messages."""
@@ -13,7 +16,10 @@ class Instruments:
     def __init__(self, provider: metrics.MeterProvider | None = None) -> None:
         meter = (provider or metrics.get_meter_provider()).get_meter("ai_service")
         self._parse = meter.create_histogram(
-            "ai.parse.duration", unit="s", description="Time to turn one uploaded CV into a parse outcome"
+            "ai.parse.duration",
+            unit="s",
+            description="Time to turn one uploaded CV into a parse outcome",
+            explicit_bucket_boundaries_advisory=PARSE_BUCKETS,
         )
         self._score = meter.create_histogram(
             "ai.match.score", description="Scores computed by the matcher (0-100)"

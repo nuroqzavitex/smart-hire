@@ -289,3 +289,9 @@ func TestHandle_RecordsProjectionLag(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, uint64(1), n)
 }
+
+// Final review: projection.lag uses second-scale buckets, so a p95 near the
+// 30s alert threshold is not interpolated between 25 and 50.
+func TestProjectionLag_ExplicitBuckets(t *testing.T) {
+	assert.Equal(t, []float64{0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30, 45, 60, 120, 300}, projection.LagBuckets)
+}

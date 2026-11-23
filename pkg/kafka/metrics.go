@@ -28,6 +28,14 @@ func (c *Consumer) newConsumerMetrics() consumerMetrics {
 	m := otel.GetMeterProvider().Meter(meterName)
 	var cm consumerMetrics
 	cm.dlq, _ = m.Int64Counter("dlq.messages", metric.WithDescription("Records written to a dead-letter topic"))
+	// Export every topic's series from the start at 0, so increase() in the
+	// DLQ alert sees the first dead-lettered record (a series born at 1 has
+	// no increase).
+	if cm.dlq != nil {
+		for _, t := range c.cfg.Topics {
+			cm.dlq.Add(context.Background(), 0, metric.WithAttributes(attribute.String("topic", t)))
+		}
+	}
 	lag, err := m.Int64ObservableGauge("kafka.consumer.lag",
 		metric.WithDescription("Records not yet committed by the consumer group"))
 	if err != nil {

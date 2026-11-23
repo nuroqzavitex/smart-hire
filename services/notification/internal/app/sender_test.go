@@ -64,3 +64,14 @@ func TestEmailBackoff_Capped(t *testing.T) {
 	assert.Equal(t, 5*time.Second, app.EmailBackoff(1))
 	assert.Equal(t, 10*time.Minute, app.EmailBackoff(20))
 }
+
+// Final review: email counters exist at 0 before the first send.
+func TestEmailCounters_ExistAtZero(t *testing.T) {
+	m := oteltest.Install(t)
+	newEnv(t)
+	for _, name := range []string{"emails.sent", "emails.failed"} {
+		v, ok := m.Int64(t, name)
+		assert.True(t, ok, name)
+		assert.Zero(t, v, name)
+	}
+}

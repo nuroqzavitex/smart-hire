@@ -727,3 +727,19 @@ func TestConsumerLag_Observed(t *testing.T) {
 		return false
 	}, "kafka.consumer.lag{group,topic} = 5")
 }
+
+// Final review: the DLQ counter exists at 0 from the start, so increase()
+// sees the first dead-lettered record.
+func TestDLQ_SeriesExistsAtZero(t *testing.T) {
+	r := installMetrics(t)
+	f := newFixture(t, false)
+	startConsumer(t, f, func(context.Context, event.Envelope, *kgo.Record) error { return nil })
+	found := false
+	for _, p := range metricPoints(t, r, "dlq.messages") {
+		if v, _ := p.Attributes.Value("topic"); v.AsString() == f.topic {
+			found = true
+			assert.Zero(t, p.Value)
+		}
+	}
+	assert.True(t, found, "dlq.messages{topic} pre-created at 0")
+}

@@ -43,10 +43,10 @@ func (s *Service) SendDue(ctx context.Context) (int, error) {
 		switch attempts := e.Attempts + 1; {
 		case sendErr == nil:
 			markErr = s.Emails.MarkSent(ctx, e.ID, now)
-			count(ctx, "emails.sent", "Emails delivered to the SMTP server")
+			count(ctx, "emails.sent", emailsSentDesc)
 		case attempts >= emailMaxAttempts:
 			markErr = s.Emails.MarkFailed(ctx, e.ID, attempts, truncate(sendErr.Error()))
-			count(ctx, "emails.failed", "Emails given up after all retries")
+			count(ctx, "emails.failed", emailsFailedDesc)
 			s.Logger.Error("email given up", "email_id", e.ID, "notification_id", e.NotificationID, "attempts", attempts)
 		default:
 			markErr = s.Emails.MarkRetry(ctx, e.ID, attempts, now.Add(EmailBackoff(attempts)), truncate(sendErr.Error()))

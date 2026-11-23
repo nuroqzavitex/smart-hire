@@ -10,8 +10,13 @@ groups:
         annotations:
           summary: "Consumer group {{ $labels.group }} is {{ $value }} records behind"
 
+      # A series can be born at 1 (the Python consumers create the counter on
+      # the first write), which increase() cannot see: the `unless offset`
+      # branch catches such a new series.
       - alert: DLQMessages
-        expr: sum by (topic) (increase(dlq_messages_total[5m])) > 0
+        expr: |
+          (sum by (topic) (increase(dlq_messages_total[5m])) > 0)
+            or (sum by (topic) (dlq_messages_total > 0 unless dlq_messages_total offset 5m))
         labels: { severity: warning }
         annotations:
           summary: "Records from {{ $labels.topic }} went to its dead-letter topic"
