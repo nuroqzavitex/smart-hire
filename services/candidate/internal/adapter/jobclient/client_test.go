@@ -78,3 +78,12 @@ func TestJobClient_ErrorsAreUnavailable(t *testing.T) {
 	_, err := c.OpenJobs(context.Background(), []uuid.UUID{uuid.New()})
 	assert.ErrorIs(t, err, apperr.ErrUnavailable)
 }
+
+// An access token that expires between the candidate and job services is the
+// caller's problem (401), not a job service outage (503).
+func TestJobClient_UnauthenticatedPassesThrough(t *testing.T) {
+	c := start(t, &fakeJobs{err: status.Error(codes.Unauthenticated, "token expired")})
+	_, err := c.OpenJobs(context.Background(), []uuid.UUID{uuid.New()})
+	assert.ErrorIs(t, err, apperr.ErrUnauthenticated)
+	assert.NotErrorIs(t, err, apperr.ErrUnavailable)
+}

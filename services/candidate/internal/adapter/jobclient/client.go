@@ -11,7 +11,9 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	jobv1 "github.com/nuroqzavitex/smarthire/gen/go/smarthire/job/v1"
 	"github.com/nuroqzavitex/smarthire/pkg/apperr"
@@ -41,6 +43,10 @@ func (c *Client) OpenJobs(ctx context.Context, ids []uuid.UUID) ([]app.JobSummar
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
+		}
+		if status.Code(err) == codes.Unauthenticated {
+			// The caller's token expired on the way: theirs to renew (401).
+			return nil, apperr.New(apperr.ErrUnauthenticated, "authentication required")
 		}
 		return nil, apperr.New(apperr.ErrUnavailable, "jobs temporarily unavailable")
 	}
