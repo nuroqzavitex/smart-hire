@@ -1,7 +1,8 @@
-# Observability: OTel Collector -> Tempo -> Grafana.
+# Observability (ADR 0013): services -> OTel Collector -> Tempo (traces),
+# Prometheus (metrics, scrapes the collector) and Loki (logs) -> Grafana.
 services:
   otel-collector:
-    image: otel/opentelemetry-collector:0.128.0
+    image: otel/opentelemetry-collector-contrib:0.128.0
     command: ["--config=/etc/otelcol/collector.yaml"]
     volumes:
       - ./otel/collector.yaml:/etc/otelcol/collector.yaml:ro
@@ -9,6 +10,33 @@ services:
       - "127.0.0.1:4317:4317"
     depends_on:
       - tempo
+      - loki
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - otel-collector
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.5.1
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
     restart: unless-stopped
 
   tempo:
@@ -29,14 +57,19 @@ services:
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
     volumes:
       - ./otel/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
       - tempo
+      - prometheus
+      - loki
     restart: unless-stopped
 
 volumes:
   tempo-data:
+  prometheus-data:
+  loki-data:
 
 networks:
   default:

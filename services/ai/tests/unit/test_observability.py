@@ -39,3 +39,20 @@ def test_setup_otel_without_endpoint_still_propagates(monkeypatch: pytest.Monkey
         inject(carrier)
     assert "traceparent" in carrier
     shutdown()
+
+
+def test_setup_otel_installs_meter_and_logger_providers(monkeypatch: pytest.MonkeyPatch) -> None:
+    from opentelemetry import metrics
+    from opentelemetry._logs import get_logger_provider
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk.metrics import MeterProvider
+
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
+    setup_logging("INFO", "ai-test")
+    shutdown = setup_otel("ai-test")
+    try:
+        assert isinstance(metrics.get_meter_provider(), MeterProvider)
+        assert isinstance(get_logger_provider(), LoggerProvider)
+        assert any(isinstance(h, LoggingHandler) for h in logging.getLogger().handlers), "logs go to OTel too"
+    finally:
+        shutdown()
