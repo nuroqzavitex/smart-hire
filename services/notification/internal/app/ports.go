@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/nuroqzavitex/smarthire/pkg/event"
+
 	"github.com/nuroqzavitex/smarthire/services/notification/internal/domain"
 )
 
@@ -30,7 +32,10 @@ type Cursor struct {
 
 // UserRepo is the replica of accounts.
 type UserRepo interface {
+	// Upsert never overwrites a tombstone.
 	Upsert(ctx context.Context, u domain.User) error
+	// Tombstone drops the address and marks the account deleted.
+	Tombstone(ctx context.Context, id uuid.UUID) error
 	// Get returns domain.ErrUserNotFound.
 	Get(ctx context.Context, id uuid.UUID) (domain.User, error)
 }
@@ -42,6 +47,8 @@ type JobRepo interface {
 	Upsert(ctx context.Context, j domain.Job) (applied bool, err error)
 	// Get returns domain.ErrJobNotFound.
 	Get(ctx context.Context, id uuid.UUID) (domain.Job, error)
+	// ClearRecruiter forgets a deleted recruiter as owner of its jobs.
+	ClearRecruiter(ctx context.Context, recruiterID uuid.UUID) error
 }
 
 // NotificationRepo persists notifications.
@@ -53,6 +60,8 @@ type NotificationRepo interface {
 	// MarkRead sets read_at once (an earlier read_at is kept) and returns the
 	// row; another user's or a missing id is domain.ErrNotificationNotFound.
 	MarkRead(ctx context.Context, id, userID uuid.UUID, at time.Time) (domain.Notification, error)
+	// DeleteByUser removes the user's notifications and their queued emails.
+	DeleteByUser(ctx context.Context, userID uuid.UUID) (int, error)
 }
 
 // EmailRepo is the email outbox.
@@ -75,6 +84,13 @@ type Mailer interface {
 // (best effort, never blocks).
 type Pusher interface {
 	Push(userID uuid.UUID, n domain.Notification)
+	// Disconnect closes every open connection of the user.
+	Disconnect(userID uuid.UUID)
+}
+
+// OutboxWriter stores an event in the transactional outbox (user.data_purged).
+type OutboxWriter interface {
+	Write(ctx context.Context, e event.Envelope, aggregateID string) error
 }
 
 // ErrPoisonEvent marks a consumed event that can never be processed.

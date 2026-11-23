@@ -52,7 +52,33 @@ func (r userRepo) Get(ctx context.Context, id uuid.UUID) (domain.User, error) {
 	if err != nil {
 		return domain.User{}, fmt.Errorf("get user: %w", err)
 	}
-	return domain.User{ID: row.UserID, Email: row.Email, Role: row.Role}, nil
+	return domain.User{ID: row.UserID, Email: row.Email, Role: row.Role, Deleted: row.Deleted}, nil
+}
+
+func (r userRepo) Tombstone(ctx context.Context, id uuid.UUID) error {
+	if err := queries(ctx, r.pool).TombstoneUser(ctx, id); err != nil {
+		return fmt.Errorf("tombstone user: %w", err)
+	}
+	return nil
+}
+
+func (r jobRepo) ClearRecruiter(ctx context.Context, recruiterID uuid.UUID) error {
+	if err := queries(ctx, r.pool).ClearJobRecruiter(ctx, &recruiterID); err != nil {
+		return fmt.Errorf("clear job recruiter: %w", err)
+	}
+	return nil
+}
+
+func (r notificationRepo) DeleteByUser(ctx context.Context, userID uuid.UUID) (int, error) {
+	q := queries(ctx, r.pool)
+	if err := q.DeleteUserEmails(ctx, userID); err != nil {
+		return 0, fmt.Errorf("delete emails: %w", err)
+	}
+	n, err := q.DeleteUserNotifications(ctx, userID)
+	if err != nil {
+		return 0, fmt.Errorf("delete notifications: %w", err)
+	}
+	return int(n), nil
 }
 
 type jobRepo struct{ *Repo }

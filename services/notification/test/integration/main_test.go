@@ -105,4 +105,3 @@ func setup(ctx context.Context, ctr *tcpostgres.PostgresContainer) error {
 	pool, err = postgres.NewPool(ctx, dsn)
 	return err
 }
-

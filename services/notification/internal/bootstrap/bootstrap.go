@@ -23,6 +23,7 @@ import (
 	"github.com/nuroqzavitex/smarthire/pkg/kafka"
 	"github.com/nuroqzavitex/smarthire/pkg/logger"
 	"github.com/nuroqzavitex/smarthire/pkg/otel"
+	"github.com/nuroqzavitex/smarthire/pkg/outbox"
 	"github.com/nuroqzavitex/smarthire/services/notification/internal/adapter/consumer"
 	ngrpc "github.com/nuroqzavitex/smarthire/services/notification/internal/adapter/grpc"
 	"github.com/nuroqzavitex/smarthire/services/notification/internal/adapter/httpx"
@@ -84,6 +85,12 @@ func Run(ctx context.Context, cfg config.Config) error {
 	}
 	defer pool.Close()
 
+	producer, err := kafka.NewProducer(cfg.KafkaBrokers)
+	if err != nil {
+		return fmt.Errorf("kafka producer: %w", err)
+	}
+	defer producer.Close() // runs before pool.Close; the relay is awaited earlier
+
 	hub := ws.NewHub(cfg.WSQueue)
 	repo := postgres.NewRepo(pool)
 	svc := app.NewService(app.Deps{
@@ -95,6 +102,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 		Tx:            postgres.NewTxManager(pool),
 		Mailer:        mailer.NewSMTP(cfg.SMTPAddr, cfg.MailFrom, cfg.SMTPTimeout),
 		Pusher:        hub,
+		Outbox:        postgres.NewOutboxWriter(pool),
 		Logger:        log,
 	})
 	sender := app.NewEmailSender(svc, cfg.EmailPoll, log)
@@ -154,6 +162,15 @@ func Run(ctx context.Context, cfg config.Config) error {
 
 	senderDone := make(chan error, 1)
 	go func() { senderDone <- sender.Run(runCtx) }()
+	// user.data_purged leaves through the outbox (ADR 0014).
+	if reg, err := outbox.RegisterPendingGauge(otel.Meter(serviceName), pool); err != nil {
+		log.Warn("outbox gauge not registered", "err", err)
+	} else {
+		defer func() { _ = reg.Unregister() }()
+	}
+	relay := outbox.NewRelay(pool, producer, outbox.RelayOptions{Interval: cfg.OutboxInterval, Logger: log})
+	relayDone := make(chan error, 1)
+	go func() { relayDone <- relay.Run(runCtx) }()
 	consumerDone := make(chan error, 1)
 	go func() { consumerDone <- events.Run(runCtx) }()
 
@@ -180,6 +197,9 @@ func Run(ctx context.Context, cfg config.Config) error {
 	cancel()
 	if err := <-senderDone; err != nil && runErr == nil {
 		runErr = fmt.Errorf("email sender: %w", err)
+	}
+	if err := <-relayDone; err != nil && runErr == nil {
+		runErr = fmt.Errorf("outbox relay: %w", err)
 	}
 	if consumerDone != nil {
 		if err := <-consumerDone; err != nil && runErr == nil {

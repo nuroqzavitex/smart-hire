@@ -45,6 +45,16 @@ type Notification struct {
 	CreatedAt time.Time
 }
 
+type Outbox struct {
+	ID          uuid.UUID
+	AggregateID string
+	EventType   string
+	Payload     json.RawMessage
+	Headers     json.RawMessage
+	CreatedAt   time.Time
+	PublishedAt *time.Time
+}
+
 type ProcessedEvent struct {
 	EventID     string
 	ProcessedAt time.Time
@@ -55,4 +65,5 @@ type User struct {
 	Email     string
 	Role      string
 	UpdatedAt time.Time
+	Deleted   bool
 }

@@ -61,11 +61,14 @@ type Email struct {
 	CreatedAt      time.Time
 }
 
-// User is the local replica of an account, from user.registered.
+// User is the local replica of an account, from user.registered. Deleted
+// marks the tombstone of a deleted account (ADR 0014): no email, and no new
+// notifications for it.
 type User struct {
-	ID    uuid.UUID
-	Email string
-	Role  string
+	ID      uuid.UUID
+	Email   string
+	Role    string
+	Deleted bool
 }
 
 // Job is the local replica of a job, from job.*; Deleted marks a tombstone.

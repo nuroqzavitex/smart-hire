@@ -19,6 +19,7 @@ const Group = "notification"
 var Topics = []string{
 	"user.registered", "job.created", "job.updated", "job.deleted", "cv.parsed", "cv.parse_failed",
 	"application.submitted", "application.status_changed", "match.completed",
+	"user.deleted", // account deletion (ADR 0014)
 }
 
 // EventHandler is satisfied by *app.Service.

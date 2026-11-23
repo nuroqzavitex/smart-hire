@@ -24,7 +24,18 @@ var (
 
 type fakeUsers struct{ m map[uuid.UUID]domain.User }
 
-func (f *fakeUsers) Upsert(_ context.Context, u domain.User) error { f.m[u.ID] = u; return nil }
+func (f *fakeUsers) Upsert(_ context.Context, u domain.User) error {
+	if f.m[u.ID].Deleted {
+		return nil
+	}
+	f.m[u.ID] = u
+	return nil
+}
+
+func (f *fakeUsers) Tombstone(_ context.Context, id uuid.UUID) error {
+	f.m[id] = domain.User{ID: id, Deleted: true}
+	return nil
+}
 func (f *fakeUsers) Get(_ context.Context, id uuid.UUID) (domain.User, error) {
 	u, ok := f.m[id]
 	if !ok {
@@ -42,6 +53,16 @@ func (f *fakeJobs) Upsert(_ context.Context, j domain.Job) (bool, error) {
 	f.m[j.ID] = j
 	return true, nil
 }
+func (f *fakeJobs) ClearRecruiter(_ context.Context, recruiterID uuid.UUID) error {
+	for id, j := range f.m {
+		if j.RecruiterID == recruiterID {
+			j.RecruiterID = uuid.Nil
+			f.m[id] = j
+		}
+	}
+	return nil
+}
+
 func (f *fakeJobs) Get(_ context.Context, id uuid.UUID) (domain.Job, error) {
 	j, ok := f.m[id]
 	if !ok {
@@ -50,7 +71,29 @@ func (f *fakeJobs) Get(_ context.Context, id uuid.UUID) (domain.Job, error) {
 	return j, nil
 }
 
-type fakeNotifications struct{ list []domain.Notification }
+type fakeNotifications struct {
+	list   []domain.Notification
+	emails *fakeEmails
+}
+
+func (f *fakeNotifications) DeleteByUser(_ context.Context, userID uuid.UUID) (int, error) {
+	var keep []domain.Notification
+	n := 0
+	for _, x := range f.list {
+		if x.UserID == userID {
+			n++
+			for id, em := range f.emails.m {
+				if em.NotificationID == x.ID {
+					delete(f.emails.m, id)
+				}
+			}
+			continue
+		}
+		keep = append(keep, x)
+	}
+	f.list = keep
+	return n, nil
+}
 
 func (f *fakeNotifications) Create(_ context.Context, n domain.Notification) error {
 	f.list = append(f.list, n)
@@ -202,7 +245,23 @@ type pushed struct {
 	n    domain.Notification
 }
 
-type fakePusher struct{ got []pushed }
+type fakePusher struct {
+	got          []pushed
+	disconnected []uuid.UUID
+}
+
+func (f *fakePusher) Disconnect(userID uuid.UUID) { f.disconnected = append(f.disconnected, userID) }
+
+type fakeOutbox struct {
+	evs  []event.Envelope
+	keys []string
+}
+
+func (f *fakeOutbox) Write(_ context.Context, e event.Envelope, key string) error {
+	f.evs = append(f.evs, e)
+	f.keys = append(f.keys, key)
+	return nil
+}
 
 func (f *fakePusher) Push(userID uuid.UUID, n domain.Notification) {
 	f.got = append(f.got, pushed{userID, n})
@@ -218,6 +277,7 @@ type env struct {
 	idem   *fakeIdem
 	mailer *fakeMailer
 	pusher *fakePusher
+	ob     *fakeOutbox
 	txErr  error
 }
 
@@ -227,15 +287,16 @@ func newEnv(t *testing.T) *env {
 		now:    t0,
 		users:  &fakeUsers{m: map[uuid.UUID]domain.User{}},
 		jobs:   &fakeJobs{m: map[uuid.UUID]domain.Job{}},
-		notes:  &fakeNotifications{},
 		emails: &fakeEmails{m: map[uuid.UUID]domain.Email{}},
 		idem:   &fakeIdem{seen: map[string]bool{}},
 		mailer: &fakeMailer{},
 		pusher: &fakePusher{},
+		ob:     &fakeOutbox{},
 	}
+	e.notes = &fakeNotifications{emails: e.emails}
 	e.svc = app.NewService(app.Deps{
 		Users: e.users, Jobs: e.jobs, Notifications: e.notes, Emails: e.emails, Idem: e.idem,
-		Tx: fakeTx{e: e}, Mailer: e.mailer, Pusher: e.pusher, Now: func() time.Time { return e.now },
+		Tx: fakeTx{e: e}, Mailer: e.mailer, Pusher: e.pusher, Outbox: e.ob, Now: func() time.Time { return e.now },
 	})
 	return e
 }

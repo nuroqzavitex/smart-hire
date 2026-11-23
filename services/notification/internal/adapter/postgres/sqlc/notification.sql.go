@@ -63,6 +63,15 @@ func (q *Queries) ClaimDueEmails(ctx context.Context, arg ClaimDueEmailsParams) 
 	return items, nil
 }
 
+const clearJobRecruiter = `-- name: ClearJobRecruiter :exec
+UPDATE jobs SET recruiter_id = NULL WHERE recruiter_id = $1
+`
+
+func (q *Queries) ClearJobRecruiter(ctx context.Context, recruiterID *uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearJobRecruiter, recruiterID)
+	return err
+}
+
 const countUnread = `-- name: CountUnread :one
 SELECT count(*)::int FROM notifications WHERE user_id = $1 AND read_at IS NULL
 `
@@ -99,6 +108,27 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 		arg.CreatedAt,
 	)
 	return err
+}
+
+const deleteUserEmails = `-- name: DeleteUserEmails :exec
+DELETE FROM email_outbox WHERE notification_id IN (SELECT id FROM notifications WHERE user_id = $1)
+`
+
+func (q *Queries) DeleteUserEmails(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUserEmails, userID)
+	return err
+}
+
+const deleteUserNotifications = `-- name: DeleteUserNotifications :execrows
+DELETE FROM notifications WHERE user_id = $1
+`
+
+func (q *Queries) DeleteUserNotifications(ctx context.Context, userID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUserNotifications, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const enqueueEmail = `-- name: EnqueueEmail :exec
@@ -149,19 +179,25 @@ func (q *Queries) GetJob(ctx context.Context, jobID uuid.UUID) (Job, error) {
 }
 
 const getUser = `-- name: GetUser :one
-SELECT user_id, email, role FROM users WHERE user_id = $1
+SELECT user_id, email, role, deleted FROM users WHERE user_id = $1
 `
 
 type GetUserRow struct {
-	UserID uuid.UUID
-	Email  string
-	Role   string
+	UserID  uuid.UUID
+	Email   string
+	Role    string
+	Deleted bool
 }
 
 func (q *Queries) GetUser(ctx context.Context, userID uuid.UUID) (GetUserRow, error) {
 	row := q.db.QueryRow(ctx, getUser, userID)
 	var i GetUserRow
-	err := row.Scan(&i.UserID, &i.Email, &i.Role)
+	err := row.Scan(
+		&i.UserID,
+		&i.Email,
+		&i.Role,
+		&i.Deleted,
+	)
 	return i, err
 }
 
@@ -296,6 +332,16 @@ func (q *Queries) MarkRead(ctx context.Context, arg MarkReadParams) (Notificatio
 	return i, err
 }
 
+const tombstoneUser = `-- name: TombstoneUser :exec
+INSERT INTO users (user_id, email, role, deleted, updated_at) VALUES ($1, '', '', true, now())
+ON CONFLICT (user_id) DO UPDATE SET email = '', role = '', deleted = true, updated_at = now()
+`
+
+func (q *Queries) TombstoneUser(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, tombstoneUser, userID)
+	return err
+}
+
 const upsertJob = `-- name: UpsertJob :execrows
 INSERT INTO jobs (job_id, recruiter_id, title, version, deleted) VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (job_id) DO UPDATE SET recruiter_id = COALESCE(EXCLUDED.recruiter_id, jobs.recruiter_id),
@@ -330,6 +376,7 @@ func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (int64, er
 const upsertUser = `-- name: UpsertUser :exec
 INSERT INTO users (user_id, email, role, updated_at) VALUES ($1, $2, $3, now())
 ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email, role = EXCLUDED.role, updated_at = now()
+WHERE NOT users.deleted
 `
 
 type UpsertUserParams struct {
@@ -338,6 +385,7 @@ type UpsertUserParams struct {
 	Role   string
 }
 
+// A tombstone (deleted account) is never overwritten.
 func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) error {
 	_, err := q.db.Exec(ctx, upsertUser, arg.UserID, arg.Email, arg.Role)
 	return err

@@ -58,6 +58,16 @@ func (h *Hub) Push(user uuid.UUID, n domain.Notification) {
 	}
 }
 
+// Disconnect closes every connection of user (account deletion, ADR 0014).
+func (h *Hub) Disconnect(user uuid.UUID) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for c := range h.conns[user] {
+		c.drop()
+	}
+	delete(h.conns, user)
+}
+
 // Connections reports how many connections user has open.
 func (h *Hub) Connections(user uuid.UUID) int {
 	h.mu.Lock()

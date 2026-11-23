@@ -21,6 +21,8 @@ type Config struct {
 	JWTAudience  string   `env:"JWT_AUDIENCE" envDefault:"smarthire-api"`
 	KafkaBrokers []string `env:"KAFKA_BROKERS" envDefault:"redpanda:9092" envSeparator:","`
 	LogLevel     string   `env:"LOG_LEVEL" envDefault:"info"`
+	// OutboxInterval paces the relay of user.data_purged (ADR 0014).
+	OutboxInterval time.Duration `env:"OUTBOX_INTERVAL" envDefault:"500ms"`
 
 	// Email outbox (ADR 0012): SMTP without auth (Mailpit in compose).
 	SMTPAddr    string        `env:"SMTP_ADDR" envDefault:"mailpit:1025"`

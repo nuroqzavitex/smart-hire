@@ -15,6 +15,8 @@ import (
 
 	"github.com/nuroqzavitex/smarthire/pkg/authz"
 	"github.com/nuroqzavitex/smarthire/pkg/event"
+	"github.com/nuroqzavitex/smarthire/pkg/event/eventschema"
+	"github.com/nuroqzavitex/smarthire/pkg/event/userdeletion"
 	"github.com/nuroqzavitex/smarthire/services/notification/internal/adapter/postgres"
 	"github.com/nuroqzavitex/smarthire/services/notification/internal/app"
 	"github.com/nuroqzavitex/smarthire/services/notification/internal/domain"
@@ -22,7 +24,7 @@ import (
 
 func reset(t *testing.T) {
 	t.Helper()
-	_, err := pool.Exec(context.Background(), `TRUNCATE email_outbox, notifications, users, jobs, processed_events`)
+	_, err := pool.Exec(context.Background(), `TRUNCATE email_outbox, notifications, users, jobs, processed_events, outbox`)
 	require.NoError(t, err)
 }
 
@@ -36,6 +38,7 @@ type countingPusher struct {
 }
 
 func (p *countingPusher) Push(uuid.UUID, domain.Notification) { p.mu.Lock(); p.n++; p.mu.Unlock() }
+func (p *countingPusher) Disconnect(uuid.UUID)                {}
 
 func newService(t *testing.T) (*app.Service, *postgres.Repo, *countingPusher) {
 	t.Helper()
@@ -45,6 +48,7 @@ func newService(t *testing.T) (*app.Service, *postgres.Repo, *countingPusher) {
 	svc := app.NewService(app.Deps{
 		Users: repo.Users(), Jobs: repo.Jobs(), Notifications: repo.Notifications(), Emails: repo.Emails(),
 		Idem: postgres.NewIdempotency(pool), Tx: postgres.NewTxManager(pool), Mailer: nopMailer{}, Pusher: p,
+		Outbox: postgres.NewOutboxWriter(pool),
 	})
 	return svc, repo, p
 }
@@ -187,4 +191,47 @@ func TestRepo_EmailClaimSkipLocked(t *testing.T) {
 	require.Len(t, due, 1, "the retried email is due again")
 	assert.Equal(t, id, due[0].ID)
 	assert.Equal(t, 1, due[0].Attempts)
+}
+
+func TestPurge_UserDeleted(t *testing.T) {
+	svc, repo, _ := newService(t)
+	ctx := context.Background()
+	cand, rec, job := uuid.New(), uuid.New(), uuid.New()
+	for _, e := range [][]byte{
+		raw(t, "user.registered", map[string]any{"user_id": cand.String(), "email": "c@x.local", "role": "candidate"}),
+		raw(t, "user.registered", map[string]any{"user_id": rec.String(), "email": "r@x.local", "role": "recruiter"}),
+		raw(t, "job.created", map[string]any{"job_id": job.String(), "recruiter_id": cand.String(), "title": "Go dev", "version": 1}),
+	} {
+		require.NoError(t, svc.HandleEvent(ctx, e))
+	}
+	del, err := userdeletion.NewDeletedEvent(ctx, userdeletion.Deleted{
+		UserID: cand, Role: "candidate", RequestID: uuid.New(), RequestedAt: time.Now(),
+	}, time.Now())
+	require.NoError(t, err)
+	b, err := json.Marshal(del)
+	require.NoError(t, err)
+	require.NoError(t, svc.HandleEvent(ctx, b))
+	require.NoError(t, svc.HandleEvent(ctx, b), "redelivery")
+
+	assert.Zero(t, count(t, `SELECT count(*) FROM notifications WHERE user_id = $1`, cand))
+	assert.Zero(t, count(t, `SELECT count(*) FROM email_outbox WHERE to_addr = 'c@x.local'`))
+	assert.Equal(t, 1, count(t, `SELECT count(*) FROM email_outbox WHERE to_addr = 'r@x.local'`))
+	u, err := repo.Users().Get(ctx, cand)
+	require.NoError(t, err)
+	assert.True(t, u.Deleted)
+	assert.Empty(t, u.Email)
+	j, err := repo.Jobs().Get(ctx, job)
+	require.NoError(t, err)
+	assert.Equal(t, uuid.Nil, j.RecruiterID)
+
+	// A late user.registered cannot bring the address back.
+	require.NoError(t, svc.HandleEvent(ctx, raw(t, "user.registered", map[string]any{"user_id": cand.String(), "email": "c@x.local", "role": "candidate"})))
+	u, err = repo.Users().Get(ctx, cand)
+	require.NoError(t, err)
+	assert.Empty(t, u.Email)
+	assert.Zero(t, count(t, `SELECT count(*) FROM notifications WHERE user_id = $1`, cand))
+
+	var payload []byte
+	require.NoError(t, pool.QueryRow(ctx, `SELECT payload FROM outbox WHERE event_type = $1`, userdeletion.TopicPurged).Scan(&payload))
+	assert.NoError(t, eventschema.Validate(userdeletion.TopicPurged, payload))
 }

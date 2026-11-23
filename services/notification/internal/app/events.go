@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/nuroqzavitex/smarthire/pkg/event"
+	"github.com/nuroqzavitex/smarthire/pkg/event/userdeletion"
 	"github.com/nuroqzavitex/smarthire/services/notification/internal/domain"
 )
 
@@ -55,6 +56,9 @@ func (s *Service) HandleEvent(ctx context.Context, raw []byte) error {
 	if err := json.Unmarshal(raw, &env); err != nil || env.EventID == "" {
 		return fmt.Errorf("%w: malformed envelope", ErrPoisonEvent)
 	}
+	if env.EventType == userdeletion.TopicDeleted {
+		return s.handleUserDeleted(ctx, env)
+	}
 	var p payload
 	if err := json.Unmarshal(env.Payload, &p); err != nil {
 		return fmt.Errorf("%w: malformed %s payload", ErrPoisonEvent, env.EventType)
@@ -72,6 +76,9 @@ func (s *Service) HandleEvent(ctx context.Context, raw []byte) error {
 		}
 		if todo == nil {
 			return nil
+		}
+		if gone, err := s.deletedUser(ctx, todo.user); err != nil || gone {
+			return err // nobody to tell about a deleted account
 		}
 		n, err := s.create(ctx, *todo)
 		if err != nil {
@@ -161,7 +168,7 @@ func (s *Service) apply(ctx context.Context, eventType string, p payload) (*pend
 			return nil, err
 		}
 		job, err := s.Jobs.Get(ctx, id[0])
-		if errors.Is(err, domain.ErrJobNotFound) || err == nil && job.Deleted {
+		if errors.Is(err, domain.ErrJobNotFound) || err == nil && (job.Deleted || job.RecruiterID == uuid.Nil) {
 			return nil, nil // owner unknown: nobody to tell
 		}
 		if err != nil {
@@ -172,6 +179,18 @@ func (s *Service) apply(ctx context.Context, eventType string, p payload) (*pend
 			data: map[string]string{"job_id": id[0].String(), "count": strconv.Itoa(len(p.Top))}}, nil
 	}
 	return nil, nil
+}
+
+// deletedUser reports whether the user's replica is a tombstone.
+func (s *Service) deletedUser(ctx context.Context, id uuid.UUID) (bool, error) {
+	u, err := s.Users.Get(ctx, id)
+	if errors.Is(err, domain.ErrUserNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return u.Deleted, nil
 }
 
 // jobTitle returns the replica's title or a generic phrase.

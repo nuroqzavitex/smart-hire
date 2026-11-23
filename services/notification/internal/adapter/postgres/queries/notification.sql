@@ -1,9 +1,24 @@
 -- name: UpsertUser :exec
+-- A tombstone (deleted account) is never overwritten.
 INSERT INTO users (user_id, email, role, updated_at) VALUES ($1, $2, $3, now())
-ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email, role = EXCLUDED.role, updated_at = now();
+ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email, role = EXCLUDED.role, updated_at = now()
+WHERE NOT users.deleted;
 
 -- name: GetUser :one
-SELECT user_id, email, role FROM users WHERE user_id = $1;
+SELECT user_id, email, role, deleted FROM users WHERE user_id = $1;
+
+-- name: TombstoneUser :exec
+INSERT INTO users (user_id, email, role, deleted, updated_at) VALUES ($1, '', '', true, now())
+ON CONFLICT (user_id) DO UPDATE SET email = '', role = '', deleted = true, updated_at = now();
+
+-- name: ClearJobRecruiter :exec
+UPDATE jobs SET recruiter_id = NULL WHERE recruiter_id = $1;
+
+-- name: DeleteUserEmails :exec
+DELETE FROM email_outbox WHERE notification_id IN (SELECT id FROM notifications WHERE user_id = $1);
+
+-- name: DeleteUserNotifications :execrows
+DELETE FROM notifications WHERE user_id = $1;
 
 -- name: UpsertJob :execrows
 -- Writes only when the stored version is older (or absent).

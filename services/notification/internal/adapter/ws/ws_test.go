@@ -145,3 +145,26 @@ func TestHub_UnregistersOnClose(t *testing.T) {
 	require.NoError(t, c.Close(websocket.StatusNormalClosure, "bye"))
 	waitConns(t, hub, user, 0)
 }
+
+func TestHub_DisconnectClosesOnlyThatUsersConnections(t *testing.T) {
+	hub := ws.NewHub(4)
+	srv := serve(t, hub)
+	user, other := uuid.New(), uuid.New()
+	a := dial(t, srv, user.String())
+	dial(t, srv, user.String())
+	o := dial(t, srv, other.String())
+	waitConns(t, hub, user, 2)
+	waitConns(t, hub, other, 1)
+
+	hub.Disconnect(user)
+	waitConns(t, hub, user, 0)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, _, err := a.Read(ctx)
+	assert.Error(t, err, "the socket is closed")
+	assert.NotErrorIs(t, ctx.Err(), context.DeadlineExceeded, "closed by the server, not by the test timeout")
+
+	hub.Push(other, sample(other))
+	assert.Equal(t, "notification.created", read(t, o)["type"], "other users keep their socket")
+	hub.Disconnect(uuid.New()) // unknown user: no-op
+}

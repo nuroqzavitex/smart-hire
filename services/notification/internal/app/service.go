@@ -26,9 +26,11 @@ type Deps struct {
 	Tx            TxManager
 	Mailer        Mailer
 	Pusher        Pusher
-	Now           func() time.Time
-	NewID         func() uuid.UUID
-	Logger        *slog.Logger
+	// Outbox carries user.data_purged (ADR 0014).
+	Outbox OutboxWriter
+	Now    func() time.Time
+	NewID  func() uuid.UUID
+	Logger *slog.Logger
 	// EmailLease bounds how long a claimed email stays reserved for one
 	// send attempt (> the SMTP timeout). EmailBatch caps a SendDue run.
 	EmailLease time.Duration
