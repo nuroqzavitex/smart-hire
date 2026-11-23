@@ -41,6 +41,8 @@ type CandidateRepo interface {
 	Get(ctx context.Context, userID uuid.UUID) (domain.Candidate, error)
 	// Upsert keeps created_at of an existing row and returns the stored row.
 	Upsert(ctx context.Context, c domain.Candidate) (domain.Candidate, error)
+	// Delete removes the profile; deleting a missing profile succeeds.
+	Delete(ctx context.Context, userID uuid.UUID) error
 }
 
 // CVRepo persists CVs.
@@ -52,7 +54,10 @@ type CVRepo interface {
 	GetForUpdate(ctx context.Context, id uuid.UUID) (domain.CV, error)
 	// Update writes every mutable field.
 	Update(ctx context.Context, cv domain.CV) error
-	// ListByCandidate orders by created_at DESC, id DESC.
+	// ListAllByCandidateForUpdate locks every CV of the candidate, tombstones
+	// included (account deletion).
+	ListAllByCandidateForUpdate(ctx context.Context, candidateID uuid.UUID) ([]domain.CV, error)
+	// ListByCandidate orders by created_at DESC, id DESC and skips tombstones.
 	ListByCandidate(ctx context.Context, candidateID uuid.UUID, after *Cursor, limit int) ([]domain.CV, error)
 }
 

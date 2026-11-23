@@ -21,7 +21,13 @@ type fakeQuota struct {
 	day      time.Time
 	limit    int
 	released []uuid.UUID
+	purged   []uuid.UUID
 	inTx     bool
+}
+
+func (f *fakeQuota) DeleteCandidate(_ context.Context, candidateID uuid.UUID) error {
+	f.purged = append(f.purged, candidateID)
+	return nil
 }
 
 func (f *fakeQuota) Reserve(ctx context.Context, appID, candidateID uuid.UUID, day time.Time, limit int) (app.QuotaResult, error) {

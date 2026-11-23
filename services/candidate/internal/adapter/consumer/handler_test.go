@@ -17,9 +17,15 @@ import (
 )
 
 type fakeUC struct {
-	raw   []byte
-	calls int
-	err   error
+	raw     []byte
+	calls   int
+	deleted []string
+	err     error
+}
+
+func (f *fakeUC) HandleUserDeleted(_ context.Context, env event.Envelope) error {
+	f.deleted = append(f.deleted, env.EventID)
+	return f.err
 }
 
 func (f *fakeUC) HandleParseResult(_ context.Context, raw []byte) error {
@@ -59,5 +65,18 @@ func TestHandler_OtherErrorsRetry(t *testing.T) {
 
 func TestTopicsAndGroup(t *testing.T) {
 	assert.Equal(t, "candidate-cv-results", consumer.Group)
-	assert.Equal(t, []string{"cv.parsed", "cv.parse_failed"}, consumer.Topics)
+	assert.Equal(t, []string{"cv.parsed", "cv.parse_failed", "user.deleted"}, consumer.Topics)
+}
+
+func TestHandler_UserDeletedGoesToThePurge(t *testing.T) {
+	uc := &fakeUC{}
+	h := consumer.NewHandler(uc)
+	rec := &kgo.Record{Topic: "user.deleted"}
+	require.NoError(t, h(context.Background(), event.Envelope{EventID: "d1", EventType: "user.deleted"}, rec))
+	assert.Equal(t, []string{"d1"}, uc.deleted)
+	assert.Zero(t, uc.calls)
+
+	uc.err = fmt.Errorf("%w: x", app.ErrPoisonEvent)
+	err := h(context.Background(), event.Envelope{EventID: "d2", EventType: "user.deleted"}, rec)
+	assert.True(t, kafka.IsPermanent(err))
 }

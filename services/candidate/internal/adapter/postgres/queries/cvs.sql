@@ -12,14 +12,18 @@ FROM cvs WHERE id = $1 FOR UPDATE;
 
 -- name: UpdateCV :execrows
 UPDATE cvs SET status = $2, attempt_id = $3, parsed_data = $4, parse_error = $5, size_bytes = $6,
-    parsed_at = $7, version = $8, updated_at = $9
+    parsed_at = $7, version = $8, updated_at = $9, file_name = $10
 WHERE id = $1;
 
 -- name: ListCVsByCandidate :many
 SELECT id, candidate_id, object_key, file_name, status, attempt_id, parsed_data, parse_error, size_bytes, consent_at, parsed_at, version, created_at, updated_at
 FROM cvs
-WHERE candidate_id = sqlc.arg(candidate_id)
+WHERE candidate_id = sqlc.arg(candidate_id) AND status <> 'DELETED'
   AND (sqlc.narg(after_id)::uuid IS NULL OR
        (created_at, id) < (sqlc.narg(after_at)::timestamptz, sqlc.narg(after_id)::uuid))
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(lim);
+
+-- name: ListAllCVsByCandidateForUpdate :many
+SELECT id, candidate_id, object_key, file_name, status, attempt_id, parsed_data, parse_error, size_bytes, consent_at, parsed_at, version, created_at, updated_at
+FROM cvs WHERE candidate_id = $1 ORDER BY id FOR UPDATE;

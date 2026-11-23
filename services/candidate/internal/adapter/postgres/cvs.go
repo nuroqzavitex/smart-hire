@@ -67,7 +67,7 @@ func (r *CVRepo) Update(ctx context.Context, cv domain.CV) error {
 	n, err := queries(ctx, r.pool).UpdateCV(ctx, sqlc.UpdateCVParams{
 		ID: cv.ID, Status: string(cv.Status), AttemptID: optText(cv.AttemptID), ParsedData: cv.ParsedData,
 		ParseError: toText(cv.ParseError), SizeBytes: toInt8(cv.SizeBytes), ParsedAt: cv.ParsedAt,
-		Version: cv.Version, UpdatedAt: cv.UpdatedAt,
+		Version: cv.Version, UpdatedAt: cv.UpdatedAt, FileName: cv.FileName,
 	})
 	if err != nil {
 		return fmt.Errorf("update cv: %w", err)
@@ -96,6 +96,20 @@ func (r *CVRepo) ListByCandidate(ctx context.Context, candidateID uuid.UUID, aft
 	out := make([]domain.CV, len(rows))
 	for i, row := range rows {
 		out[i] = toCV(row)
+	}
+	return out, nil
+}
+
+// ListAllByCandidateForUpdate locks every CV of the candidate, tombstones
+// included; call it inside a tx.
+func (r *CVRepo) ListAllByCandidateForUpdate(ctx context.Context, candidateID uuid.UUID) ([]domain.CV, error) {
+	rows, err := queries(ctx, r.pool).ListAllCVsByCandidateForUpdate(ctx, candidateID)
+	if err != nil {
+		return nil, fmt.Errorf("list cvs for update: %w", err)
+	}
+	out := make([]domain.CV, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toCV(row))
 	}
 	return out, nil
 }

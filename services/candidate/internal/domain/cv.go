@@ -35,6 +35,10 @@ const (
 	StatusUploaded  Status = "UPLOADED"
 	StatusParsed    Status = "PARSED"
 	StatusFailed    Status = "FAILED"
+	// StatusDeleted is a tombstone left by an account deletion (ADR 0014):
+	// the file and every personal field are gone, and late parse results
+	// for it are stale.
+	StatusDeleted Status = "DELETED"
 )
 
 // CV is an uploaded resume and its parse state. AttemptID identifies the
@@ -148,6 +152,22 @@ func (c *CV) Reparse(attemptID string, now time.Time) error {
 	c.ParsedAt = nil
 	c.touch(now)
 	return nil
+}
+
+// Tombstone drops the file name and parse data and marks the CV DELETED. It
+// reports false (and changes nothing) for a CV that already is a tombstone.
+func (c *CV) Tombstone(now time.Time) bool {
+	if c.Status == StatusDeleted {
+		return false
+	}
+	c.Status = StatusDeleted
+	c.FileName = ""
+	c.AttemptID = ""
+	c.ParsedData = nil
+	c.ParseError = nil
+	c.ParsedAt = nil
+	c.touch(now)
+	return true
 }
 
 // OwnedBy reports whether subject is the candidate who owns the CV.

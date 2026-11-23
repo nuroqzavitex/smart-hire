@@ -27,6 +27,24 @@ func (q *Queries) DecrementQuota(ctx context.Context, arg DecrementQuotaParams) 
 	return err
 }
 
+const deleteCandidateQuota = `-- name: DeleteCandidateQuota :exec
+DELETE FROM daily_quota WHERE candidate_id = $1
+`
+
+func (q *Queries) DeleteCandidateQuota(ctx context.Context, candidateID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCandidateQuota, candidateID)
+	return err
+}
+
+const deleteCandidateReservations = `-- name: DeleteCandidateReservations :exec
+DELETE FROM quota_reservations WHERE candidate_id = $1
+`
+
+func (q *Queries) DeleteCandidateReservations(ctx context.Context, candidateID *uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCandidateReservations, candidateID)
+	return err
+}
+
 const deleteReservation = `-- name: DeleteReservation :exec
 DELETE FROM quota_reservations WHERE application_id = $1
 `

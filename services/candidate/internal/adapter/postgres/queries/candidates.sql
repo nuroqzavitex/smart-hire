@@ -8,3 +8,6 @@ RETURNING user_id, full_name, phone, location, created_at, updated_at;
 -- name: GetCandidate :one
 SELECT user_id, full_name, phone, location, created_at, updated_at
 FROM candidates WHERE user_id = $1;
+
+-- name: DeleteCandidate :exec
+DELETE FROM candidates WHERE user_id = $1;

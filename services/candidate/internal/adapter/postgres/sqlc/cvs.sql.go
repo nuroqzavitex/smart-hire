@@ -110,10 +110,50 @@ func (q *Queries) InsertCV(ctx context.Context, arg InsertCVParams) error {
 	return err
 }
 
+const listAllCVsByCandidateForUpdate = `-- name: ListAllCVsByCandidateForUpdate :many
+SELECT id, candidate_id, object_key, file_name, status, attempt_id, parsed_data, parse_error, size_bytes, consent_at, parsed_at, version, created_at, updated_at
+FROM cvs WHERE candidate_id = $1 ORDER BY id FOR UPDATE
+`
+
+func (q *Queries) ListAllCVsByCandidateForUpdate(ctx context.Context, candidateID uuid.UUID) ([]Cv, error) {
+	rows, err := q.db.Query(ctx, listAllCVsByCandidateForUpdate, candidateID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Cv
+	for rows.Next() {
+		var i Cv
+		if err := rows.Scan(
+			&i.ID,
+			&i.CandidateID,
+			&i.ObjectKey,
+			&i.FileName,
+			&i.Status,
+			&i.AttemptID,
+			&i.ParsedData,
+			&i.ParseError,
+			&i.SizeBytes,
+			&i.ConsentAt,
+			&i.ParsedAt,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCVsByCandidate = `-- name: ListCVsByCandidate :many
 SELECT id, candidate_id, object_key, file_name, status, attempt_id, parsed_data, parse_error, size_bytes, consent_at, parsed_at, version, created_at, updated_at
 FROM cvs
-WHERE candidate_id = $1
+WHERE candidate_id = $1 AND status <> 'DELETED'
   AND ($2::uuid IS NULL OR
        (created_at, id) < ($3::timestamptz, $2::uuid))
 ORDER BY created_at DESC, id DESC
@@ -169,7 +209,7 @@ func (q *Queries) ListCVsByCandidate(ctx context.Context, arg ListCVsByCandidate
 
 const updateCV = `-- name: UpdateCV :execrows
 UPDATE cvs SET status = $2, attempt_id = $3, parsed_data = $4, parse_error = $5, size_bytes = $6,
-    parsed_at = $7, version = $8, updated_at = $9
+    parsed_at = $7, version = $8, updated_at = $9, file_name = $10
 WHERE id = $1
 `
 
@@ -183,6 +223,7 @@ type UpdateCVParams struct {
 	ParsedAt   *time.Time
 	Version    int64
 	UpdatedAt  time.Time
+	FileName   string
 }
 
 func (q *Queries) UpdateCV(ctx context.Context, arg UpdateCVParams) (int64, error) {
@@ -196,6 +237,7 @@ func (q *Queries) UpdateCV(ctx context.Context, arg UpdateCVParams) (int64, erro
 		arg.ParsedAt,
 		arg.Version,
 		arg.UpdatedAt,
+		arg.FileName,
 	)
 	if err != nil {
 		return 0, err

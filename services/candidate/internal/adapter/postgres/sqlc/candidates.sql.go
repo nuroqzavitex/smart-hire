@@ -13,6 +13,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteCandidate = `-- name: DeleteCandidate :exec
+DELETE FROM candidates WHERE user_id = $1
+`
+
+func (q *Queries) DeleteCandidate(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCandidate, userID)
+	return err
+}
+
 const getCandidate = `-- name: GetCandidate :one
 SELECT user_id, full_name, phone, location, created_at, updated_at
 FROM candidates WHERE user_id = $1

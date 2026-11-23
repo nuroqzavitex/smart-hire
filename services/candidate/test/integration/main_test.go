@@ -116,6 +116,7 @@ func setup(ctx context.Context) ([]func(), error) {
 		Idem:       postgres.NewIdempotency(pool),
 		Tx:         postgres.NewTxManager(pool),
 		Schema:     schema.Validator{},
+		Quota:      postgres.NewQuotaRepo(pool),
 	})
 	return cleanups, nil
 }
@@ -251,7 +252,7 @@ func createTopics(ctx context.Context, topics ...string) error {
 
 func truncate(t *testing.T) {
 	t.Helper()
-	if _, err := pool.Exec(context.Background(), `TRUNCATE candidates, cvs, outbox, processed_events`); err != nil {
+	if _, err := pool.Exec(context.Background(), `TRUNCATE candidates, cvs, outbox, processed_events, daily_quota, quota_reservations`); err != nil {
 		t.Fatal(err)
 	}
 }

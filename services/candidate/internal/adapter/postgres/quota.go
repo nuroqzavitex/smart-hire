@@ -93,3 +93,15 @@ func (r *QuotaRepo) Release(ctx context.Context, appID uuid.UUID) error {
 	}
 	return nil
 }
+
+// DeleteCandidate removes the candidate's daily counters and reservations.
+func (r *QuotaRepo) DeleteCandidate(ctx context.Context, candidateID uuid.UUID) error {
+	q := queries(ctx, r.pool)
+	if err := q.DeleteCandidateQuota(ctx, candidateID); err != nil {
+		return fmt.Errorf("delete quota: %w", err)
+	}
+	if err := q.DeleteCandidateReservations(ctx, &candidateID); err != nil {
+		return fmt.Errorf("delete reservations: %w", err)
+	}
+	return nil
+}

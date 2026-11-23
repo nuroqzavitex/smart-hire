@@ -153,7 +153,7 @@ func (s *Service) ownedCV(ctx context.Context, get func(context.Context, uuid.UU
 	if err != nil {
 		return domain.CV{}, err
 	}
-	if cv.CandidateID != uid {
+	if cv.CandidateID != uid || cv.Status == domain.StatusDeleted {
 		return domain.CV{}, domain.ErrCVNotFound
 	}
 	return cv, nil

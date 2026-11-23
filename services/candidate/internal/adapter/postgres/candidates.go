@@ -45,6 +45,14 @@ func (r *CandidateRepo) Upsert(ctx context.Context, c domain.Candidate) (domain.
 	return toCandidate(row), nil
 }
 
+// Delete removes the profile; a missing profile is not an error.
+func (r *CandidateRepo) Delete(ctx context.Context, userID uuid.UUID) error {
+	if err := queries(ctx, r.pool).DeleteCandidate(ctx, userID); err != nil {
+		return fmt.Errorf("delete candidate: %w", err)
+	}
+	return nil
+}
+
 func toCandidate(r sqlc.Candidate) domain.Candidate {
 	return domain.Candidate{
 		UserID: r.UserID, FullName: r.FullName, Phone: fromText(r.Phone), Location: fromText(r.Location),

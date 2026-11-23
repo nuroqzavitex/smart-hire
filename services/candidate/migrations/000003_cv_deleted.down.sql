@@ -1,0 +1,4 @@
+DELETE FROM cvs WHERE status = 'DELETED';
+ALTER TABLE cvs DROP CONSTRAINT cvs_status_check;
+ALTER TABLE cvs ADD CONSTRAINT cvs_status_check
+    CHECK (status IN ('UPLOADING','UPLOADED','PARSED','FAILED'));

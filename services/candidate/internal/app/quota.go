@@ -28,6 +28,9 @@ type QuotaRepo interface {
 	// Release frees a reservation once; for an unknown appID it records a
 	// RELEASED tombstone so a late Reserve cannot take quota.
 	Release(ctx context.Context, appID uuid.UUID) error
+	// DeleteCandidate removes the candidate's quota and reservations
+	// (account deletion).
+	DeleteCandidate(ctx context.Context, candidateID uuid.UUID) error
 }
 
 // ReserveQuota holds one unit of the candidate's quota for the UTC day of

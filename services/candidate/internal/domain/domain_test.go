@@ -320,3 +320,30 @@ func TestOwnedBy(t *testing.T) {
 	assert.False(t, cv.OwnedBy(uuid.NewString()))
 	assert.False(t, cv.OwnedBy(""))
 }
+
+func TestCV_TombstoneDropsPIIAndBlocksLateResults(t *testing.T) {
+	now := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)
+	cv, err := domain.NewCV(uuid.New(), uuid.New(), "my-cv.pdf", now)
+	require.NoError(t, err)
+	require.NoError(t, cv.Complete(10, "a1", now))
+	require.NoError(t, cv.ApplyParsed("a1", []byte(`{"skills":["go"]}`), now))
+	v := cv.Version
+
+	later := now.Add(time.Hour)
+	assert.True(t, cv.Tombstone(later))
+	assert.Equal(t, domain.StatusDeleted, cv.Status)
+	assert.Empty(t, cv.FileName)
+	assert.Empty(t, cv.AttemptID)
+	assert.Nil(t, cv.ParsedData)
+	assert.Nil(t, cv.ParseError)
+	assert.Nil(t, cv.ParsedAt)
+	assert.Equal(t, v+1, cv.Version)
+	assert.Equal(t, later, cv.UpdatedAt)
+
+	assert.False(t, cv.Tombstone(later), "already a tombstone")
+	assert.Equal(t, v+1, cv.Version)
+	assert.ErrorIs(t, cv.ApplyParsed("a1", []byte(`{}`), later), domain.ErrStaleResult)
+	assert.ErrorIs(t, cv.ApplyFailed("", "x", later), domain.ErrStaleResult)
+	assert.ErrorIs(t, cv.Reparse("a2", later.Add(time.Hour)), domain.ErrInvalidTransition)
+	assert.ErrorIs(t, cv.UpdateParsed([]byte(`{}`), later), domain.ErrInvalidTransition)
+}

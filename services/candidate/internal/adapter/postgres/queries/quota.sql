@@ -24,3 +24,9 @@ WHERE application_id = $1;
 
 -- name: DeleteReservation :exec
 DELETE FROM quota_reservations WHERE application_id = $1;
+
+-- name: DeleteCandidateQuota :exec
+DELETE FROM daily_quota WHERE candidate_id = $1;
+
+-- name: DeleteCandidateReservations :exec
+DELETE FROM quota_reservations WHERE candidate_id = $1;

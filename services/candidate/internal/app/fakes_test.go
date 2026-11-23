@@ -69,6 +69,13 @@ func (f *fakeCandidates) Get(_ context.Context, id uuid.UUID) (domain.Candidate,
 	return c, nil
 }
 
+func (f *fakeCandidates) Delete(_ context.Context, id uuid.UUID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.m, id)
+	return nil
+}
+
 func (f *fakeCandidates) Upsert(_ context.Context, c domain.Candidate) (domain.Candidate, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -112,13 +119,26 @@ func (f *fakeCVs) Update(_ context.Context, cv domain.CV) error {
 	return nil
 }
 
+func (f *fakeCVs) ListAllByCandidateForUpdate(_ context.Context, cid uuid.UUID) ([]domain.CV, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.CV
+	for _, cv := range f.m {
+		if cv.CandidateID == cid {
+			out = append(out, cv)
+		}
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a].ID.String() < out[b].ID.String() })
+	return out, nil
+}
+
 // ListByCandidate implements real keyset semantics: created_at DESC, id DESC.
 func (f *fakeCVs) ListByCandidate(_ context.Context, cid uuid.UUID, after *app.Cursor, limit int) ([]domain.CV, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var all []domain.CV
 	for _, cv := range f.m {
-		if cv.CandidateID == cid {
+		if cv.CandidateID == cid && cv.Status != domain.StatusDeleted {
 			all = append(all, cv)
 		}
 	}
@@ -154,6 +174,7 @@ type fakeStorage struct {
 	presignContentType string
 	presignTTL         time.Duration
 	stats, deletes     int
+	deleteErr          error
 }
 
 func (f *fakeStorage) PresignPut(_ context.Context, key, contentType string, ttl time.Duration) (string, error) {
@@ -189,6 +210,9 @@ func (f *fakeStorage) Delete(_ context.Context, key string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.deletes++
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
 	delete(f.objs, key)
 	return nil
 }
