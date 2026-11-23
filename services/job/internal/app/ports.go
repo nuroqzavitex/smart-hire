@@ -22,6 +22,12 @@ type OutboxWriter interface {
 	Write(ctx context.Context, e event.Envelope, aggregateID string) error
 }
 
+// Idempotency records processed event IDs inside the tx carried by ctx; it
+// reports false when eventID was already processed.
+type Idempotency interface {
+	Once(ctx context.Context, eventID string) (bool, error)
+}
+
 // Cursor is a keyset pagination position.
 type Cursor struct {
 	Rank *float32  `json:"r,omitempty"`
@@ -56,6 +62,9 @@ type JobRepo interface {
 	// Search returns open, non-deleted jobs; Rank is 0 when Query is empty.
 	Search(ctx context.Context, f SearchFilter, after *Cursor, limit int) ([]SearchHit, error)
 	ListByRecruiter(ctx context.Context, recruiterID uuid.UUID, status *domain.Status, after *Cursor, limit int) ([]domain.Job, error)
+	// ListByRecruiterForUpdate locks every job of the recruiter, deleted ones
+	// included (account deletion).
+	ListByRecruiterForUpdate(ctx context.Context, recruiterID uuid.UUID) ([]domain.Job, error)
 	// GetOpenByIDs returns the open, non-deleted jobs among ids, in any order.
 	GetOpenByIDs(ctx context.Context, ids []uuid.UUID) ([]domain.Job, error)
 }

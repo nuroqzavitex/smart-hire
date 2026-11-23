@@ -203,6 +203,24 @@ func (j *Job) Delete(now time.Time) error {
 	return nil
 }
 
+// Purge handles the recruiter's account deletion (ADR 0014): an open job is
+// closed, the job is soft-deleted (keeping an earlier deletion time) and the
+// owner is replaced by uuid.Nil. It reports false for a job already purged.
+func (j *Job) Purge(now time.Time) bool {
+	if j.DeletedAt != nil && j.RecruiterID == uuid.Nil {
+		return false
+	}
+	if j.Status == StatusOpen {
+		j.Status = StatusClosed
+	}
+	if j.DeletedAt == nil {
+		j.DeletedAt = &now
+	}
+	j.RecruiterID = uuid.Nil
+	j.touch(now)
+	return true
+}
+
 // OwnedBy reports whether subject is the recruiter who owns the job.
 func (j Job) OwnedBy(subject string) bool {
 	return subject != "" && j.RecruiterID.String() == subject

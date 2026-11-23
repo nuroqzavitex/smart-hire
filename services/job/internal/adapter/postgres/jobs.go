@@ -61,6 +61,20 @@ func (r *JobRepo) GetOpenByIDs(ctx context.Context, ids []uuid.UUID) ([]domain.J
 	return out, nil
 }
 
+// ListByRecruiterForUpdate locks every job of the recruiter, deleted ones
+// included; call it inside a tx.
+func (r *JobRepo) ListByRecruiterForUpdate(ctx context.Context, recruiterID uuid.UUID) ([]domain.Job, error) {
+	rows, err := queries(ctx, r.pool).ListJobsByRecruiterForUpdate(ctx, recruiterID)
+	if err != nil {
+		return nil, fmt.Errorf("list recruiter jobs for update: %w", err)
+	}
+	out := make([]domain.Job, len(rows))
+	for i, row := range rows {
+		out[i] = toJob(sqlc.GetJobRow(row))
+	}
+	return out, nil
+}
+
 // GetForUpdate is Get with a row lock (SELECT ... FOR UPDATE); call it inside a tx.
 func (r *JobRepo) GetForUpdate(ctx context.Context, id uuid.UUID) (domain.Job, error) {
 	row, err := queries(ctx, r.pool).GetJobForUpdate(ctx, id)
@@ -79,6 +93,7 @@ func (r *JobRepo) Update(ctx context.Context, j domain.Job) error {
 		SalaryMin: toInt4(j.SalaryMin), SalaryMax: toInt4(j.SalaryMax),
 		Status: string(j.Status), Version: j.Version,
 		PublishedAt: j.PublishedAt, DeletedAt: j.DeletedAt, UpdatedAt: j.UpdatedAt,
+		RecruiterID: j.RecruiterID,
 	})
 	if err != nil {
 		return fmt.Errorf("update job: %w", err)

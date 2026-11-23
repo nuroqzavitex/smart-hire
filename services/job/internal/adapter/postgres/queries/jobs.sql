@@ -17,7 +17,7 @@ FROM jobs WHERE id = $1 AND deleted_at IS NULL FOR UPDATE;
 -- name: UpdateJob :execrows
 UPDATE jobs SET title = $2, description = $3, required_skills = $4, nice_to_have_skills = $5,
     level = $6, location = $7, salary_min = $8, salary_max = $9, status = $10, version = $11,
-    published_at = $12, deleted_at = $13, updated_at = $14
+    published_at = $12, deleted_at = $13, updated_at = $14, recruiter_id = $15
 WHERE id = $1;
 
 -- name: SearchOpenJobs :many
@@ -70,3 +70,9 @@ LIMIT sqlc.arg(lim);
 
 -- name: OpenJobVersions :many
 SELECT id, version FROM jobs WHERE status = 'open' AND deleted_at IS NULL;
+
+-- name: ListJobsByRecruiterForUpdate :many
+-- Every job of the recruiter, deleted ones included (account deletion).
+SELECT id, recruiter_id, title, description, required_skills, nice_to_have_skills, level, location,
+    salary_min, salary_max, status, version, published_at, deleted_at, created_at, updated_at
+FROM jobs WHERE recruiter_id = $1 ORDER BY id FOR UPDATE;

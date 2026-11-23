@@ -200,3 +200,27 @@ func TestOwnedBy(t *testing.T) {
 	assert.False(t, j.OwnedBy(uuid.NewString()))
 	assert.False(t, j.OwnedBy(""))
 }
+
+func TestJob_PurgeClosesDeletesAndAnonymises(t *testing.T) {
+	now := time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC)
+	rec := uuid.New()
+	for _, st := range []domain.Status{domain.StatusDraft, domain.StatusOpen, domain.StatusClosed} {
+		j := domain.Job{ID: uuid.New(), RecruiterID: rec, Status: st, Version: 3}
+		later := now.Add(time.Hour)
+		assert.True(t, j.Purge(later), st)
+		assert.Equal(t, uuid.Nil, j.RecruiterID, st)
+		require.NotNil(t, j.DeletedAt, st)
+		assert.Equal(t, later, *j.DeletedAt)
+		assert.NotEqual(t, domain.StatusOpen, j.Status, st)
+		assert.Equal(t, int64(4), j.Version, st)
+		assert.False(t, j.Purge(later.Add(time.Hour)), "already purged")
+		assert.Equal(t, int64(4), j.Version)
+	}
+
+	// A job the recruiter deleted earlier keeps its deletion time but loses
+	// the owner.
+	deleted := domain.Job{ID: uuid.New(), RecruiterID: rec, Status: domain.StatusClosed, Version: 2, DeletedAt: &now}
+	assert.True(t, deleted.Purge(now.Add(time.Hour)))
+	assert.Equal(t, now, *deleted.DeletedAt)
+	assert.Equal(t, uuid.Nil, deleted.RecruiterID)
+}

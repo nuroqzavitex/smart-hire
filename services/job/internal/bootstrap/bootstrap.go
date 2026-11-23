@@ -24,6 +24,7 @@ import (
 	"github.com/nuroqzavitex/smarthire/pkg/otel"
 	"github.com/nuroqzavitex/smarthire/pkg/outbox"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/aiclient"
+	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/consumer"
 	jobgrpc "github.com/nuroqzavitex/smarthire/services/job/internal/adapter/grpc"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/httpx"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/adapter/opensearch"
@@ -57,6 +58,7 @@ func NewService(pool *pgxpool.Pool, search app.SearchBackend, matcher app.Matche
 		Tx:      postgres.NewTxManager(pool),
 		Search:  search,
 		Matcher: matcher,
+		Idem:    postgres.NewIdempotency(pool),
 		Now:     time.Now,
 		NewID:   uuid.New,
 		Logger:  log,
@@ -159,6 +161,25 @@ func Run(ctx context.Context, cfg config.Config) error {
 	relayDone := make(chan error, 1)
 	go func() { relayDone <- relay.Run(runCtx) }()
 
+	// user.deleted: purge a deleted recruiter's jobs (ADR 0014).
+	purge, err := kafka.NewConsumer(kafka.ConsumerConfig{
+		Brokers: cfg.KafkaBrokers,
+		Group:   consumer.Group,
+		Topics:  consumer.Topics,
+		Handler: consumer.NewHandler(svc),
+		Logger:  log,
+	})
+	if err != nil {
+		cancel()
+		if rerr := <-relayDone; rerr != nil {
+			log.Warn("outbox relay stopped", "err", rerr)
+		}
+		return fmt.Errorf("kafka consumer: %w", err)
+	}
+	defer purge.Close() // after Run returns (awaited below)
+	consumerDone := make(chan error, 1)
+	go func() { consumerDone <- purge.Run(runCtx) }()
+
 	var runErr error
 	select {
 	case <-ctx.Done():
@@ -169,12 +190,25 @@ func Run(ctx context.Context, cfg config.Config) error {
 		if !errors.Is(err, http.ErrServerClosed) {
 			runErr = fmt.Errorf("http server: %w", err)
 		}
+	case err := <-consumerDone:
+		consumerDone = nil
+		if err == nil {
+			err = errors.New("stopped unexpectedly")
+		}
+		runErr = fmt.Errorf("user.deleted consumer: %w", err)
+		log.Error("user.deleted consumer stopped, shutting down", "err", err)
 	}
 	hs.Shutdown() // report NOT_SERVING while draining
 	cancel()
-	// Wait for the relay before the deferred producer and pool close.
+	// Wait for the relay and the consumer before the deferred producer and
+	// pool close.
 	if err := <-relayDone; err != nil && runErr == nil {
 		runErr = fmt.Errorf("outbox relay: %w", err)
+	}
+	if consumerDone != nil {
+		if err := <-consumerDone; err != nil && runErr == nil {
+			runErr = fmt.Errorf("user.deleted consumer: %w", err)
+		}
 	}
 	if grpcErr != nil {
 		if err := <-grpcErr; err != nil && runErr == nil {

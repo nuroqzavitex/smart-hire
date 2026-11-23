@@ -297,6 +297,69 @@ func (q *Queries) ListJobsByRecruiter(ctx context.Context, arg ListJobsByRecruit
 	return items, nil
 }
 
+const listJobsByRecruiterForUpdate = `-- name: ListJobsByRecruiterForUpdate :many
+SELECT id, recruiter_id, title, description, required_skills, nice_to_have_skills, level, location,
+    salary_min, salary_max, status, version, published_at, deleted_at, created_at, updated_at
+FROM jobs WHERE recruiter_id = $1 ORDER BY id FOR UPDATE
+`
+
+type ListJobsByRecruiterForUpdateRow struct {
+	ID               uuid.UUID
+	RecruiterID      uuid.UUID
+	Title            string
+	Description      string
+	RequiredSkills   []string
+	NiceToHaveSkills []string
+	Level            string
+	Location         string
+	SalaryMin        pgtype.Int4
+	SalaryMax        pgtype.Int4
+	Status           string
+	Version          int64
+	PublishedAt      *time.Time
+	DeletedAt        *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+// Every job of the recruiter, deleted ones included (account deletion).
+func (q *Queries) ListJobsByRecruiterForUpdate(ctx context.Context, recruiterID uuid.UUID) ([]ListJobsByRecruiterForUpdateRow, error) {
+	rows, err := q.db.Query(ctx, listJobsByRecruiterForUpdate, recruiterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListJobsByRecruiterForUpdateRow
+	for rows.Next() {
+		var i ListJobsByRecruiterForUpdateRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RecruiterID,
+			&i.Title,
+			&i.Description,
+			&i.RequiredSkills,
+			&i.NiceToHaveSkills,
+			&i.Level,
+			&i.Location,
+			&i.SalaryMin,
+			&i.SalaryMax,
+			&i.Status,
+			&i.Version,
+			&i.PublishedAt,
+			&i.DeletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenJobs = `-- name: ListOpenJobs :many
 SELECT j.id, j.recruiter_id, j.title, j.description, j.required_skills, j.nice_to_have_skills, j.level, j.location, j.salary_min, j.salary_max, j.status, j.version, j.published_at, j.deleted_at, j.created_at, j.updated_at
 FROM jobs j
@@ -585,7 +648,7 @@ func (q *Queries) SearchOpenJobs(ctx context.Context, arg SearchOpenJobsParams) 
 const updateJob = `-- name: UpdateJob :execrows
 UPDATE jobs SET title = $2, description = $3, required_skills = $4, nice_to_have_skills = $5,
     level = $6, location = $7, salary_min = $8, salary_max = $9, status = $10, version = $11,
-    published_at = $12, deleted_at = $13, updated_at = $14
+    published_at = $12, deleted_at = $13, updated_at = $14, recruiter_id = $15
 WHERE id = $1
 `
 
@@ -604,6 +667,7 @@ type UpdateJobParams struct {
 	PublishedAt      *time.Time
 	DeletedAt        *time.Time
 	UpdatedAt        time.Time
+	RecruiterID      uuid.UUID
 }
 
 func (q *Queries) UpdateJob(ctx context.Context, arg UpdateJobParams) (int64, error) {
@@ -622,6 +686,7 @@ func (q *Queries) UpdateJob(ctx context.Context, arg UpdateJobParams) (int64, er
 		arg.PublishedAt,
 		arg.DeletedAt,
 		arg.UpdatedAt,
+		arg.RecruiterID,
 	)
 	if err != nil {
 		return 0, err

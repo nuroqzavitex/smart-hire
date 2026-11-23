@@ -217,3 +217,16 @@ func tickClock() func() time.Time {
 		return t
 	}
 }
+
+func (f *fakeJobs) ListByRecruiterForUpdate(_ context.Context, recruiterID uuid.UUID) ([]domain.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.Job
+	for _, j := range f.m {
+		if j.RecruiterID == recruiterID {
+			out = append(out, j)
+		}
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a].ID.String() < out[b].ID.String() })
+	return out, nil
+}

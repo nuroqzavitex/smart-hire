@@ -13,6 +13,8 @@ type Deps struct {
 	Jobs   JobRepo
 	Outbox OutboxWriter
 	Tx     TxManager
+	// Idem dedupes consumed events (user.deleted, ADR 0014).
+	Idem Idempotency
 	// Search is the read model for ListOpen; nil means Postgres only.
 	Search SearchBackend
 	// Matcher ranks candidates for a job (AI service); nil means unavailable.
