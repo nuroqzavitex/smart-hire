@@ -96,6 +96,15 @@ def test_experience_fit(level: str, years: float | None, fit: float) -> None:
         ("Hà Nội", None, 0.5),
         (None, "Huế", 0.5),
         ("Hà Nội", "Huế", 0.0),
+        ("Hà Nội", "Hanoi", 1.0),
+        ("Hanoi, Vietnam", "Hà Nội", 1.0),
+        ("TP. Hồ Chí Minh", "Ho Chi Minh City", 1.0),
+        ("HCM", "Sài Gòn", 1.0),
+        ("Quận 7, TP.HCM", "HCMC", 1.0),
+        ("Đà Nẵng", "Da Nang", 1.0),
+        ("HN", "Hà Nội", 1.0),
+        ("Hồ Chí Minh", "Hà Nội", 0.0),
+        ("TP.HCM", "Hanoi", 0.0),
     ],
 )
 def test_location_fit(job_loc: str | None, cv_loc: str | None, fit: float) -> None:

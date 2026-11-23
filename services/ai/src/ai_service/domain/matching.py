@@ -80,10 +80,36 @@ def _experience_fit(level: str, years: float | None) -> float:
     return min(1.0, years / need)
 
 
+# Spellings of the big cities that plain folding cannot unify ("TP.HCM" vs
+# "Sài Gòn"); matched as substrings of the compact form.
+CITY_ALIASES: dict[str, tuple[str, ...]] = {
+    "hochiminh": ("hochiminh", "saigon", "tphcm", "hcmc"),
+    "hanoi": ("hanoi",),
+    "danang": ("danang",),
+}
+# Abbreviations that only count as the whole location (substrings would
+# match unrelated words).
+CITY_ABBREVIATIONS: dict[str, str] = {"hcm": "hochiminh", "sg": "hochiminh", "hn": "hanoi"}
+
+
+def _compact(text: str) -> str:
+    """Folded text with only letters and digits: "Hà Nội" and "Hanoi" both become "hanoi"."""
+    return "".join(ch for ch in _fold(text) if ch.isalnum())
+
+
+def _cities(compact: str) -> set[str]:
+    if compact in CITY_ABBREVIATIONS:
+        return {CITY_ABBREVIATIONS[compact]}
+    return {city for city, aliases in CITY_ALIASES.items() if any(a in compact for a in aliases)}
+
+
 def _location_fit(job_location: str | None, cv_location: str | None) -> float:
-    a, b = _fold(job_location or ""), _fold(cv_location or "")
+    a, b = _compact(job_location or ""), _compact(cv_location or "")
     if not a or not b:
         return UNKNOWN_FIT
+    ca, cb = _cities(a), _cities(b)
+    if ca and cb:
+        return 1.0 if ca & cb else 0.0
     return 1.0 if a in b or b in a else 0.0
 
 
