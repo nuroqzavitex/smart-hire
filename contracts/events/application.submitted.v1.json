@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://smarthire.local/events/application.submitted.v1.json",
+  "title": "application.submitted v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "source",
+    "occurred_at",
+    "trace_id",
+    "correlation_id",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "event_type": {
+      "const": "application.submitted"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "source": {
+      "const": "application-service"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trace_id": {
+      "type": "string"
+    },
+    "correlation_id": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "application_id",
+        "job_id",
+        "candidate_id",
+        "recruiter_id",
+        "cv_id"
+      ],
+      "properties": {
+        "application_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "job_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "candidate_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "recruiter_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "cv_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

@@ -11,6 +11,7 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -1319,11 +1320,107 @@ func (x *ListRecommendedJobsResponse) GetModelVersion() string {
 	return ""
 }
 
+type ReserveQuotaRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ApplicationId string                 `protobuf:"bytes,1,opt,name=application_id,json=applicationId,proto3" json:"application_id,omitempty"`
+	CandidateId   string                 `protobuf:"bytes,2,opt,name=candidate_id,json=candidateId,proto3" json:"candidate_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReserveQuotaRequest) Reset() {
+	*x = ReserveQuotaRequest{}
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReserveQuotaRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReserveQuotaRequest) ProtoMessage() {}
+
+func (x *ReserveQuotaRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReserveQuotaRequest.ProtoReflect.Descriptor instead.
+func (*ReserveQuotaRequest) Descriptor() ([]byte, []int) {
+	return file_smarthire_candidate_v1_candidate_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ReserveQuotaRequest) GetApplicationId() string {
+	if x != nil {
+		return x.ApplicationId
+	}
+	return ""
+}
+
+func (x *ReserveQuotaRequest) GetCandidateId() string {
+	if x != nil {
+		return x.CandidateId
+	}
+	return ""
+}
+
+type ReleaseQuotaRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ApplicationId string                 `protobuf:"bytes,1,opt,name=application_id,json=applicationId,proto3" json:"application_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseQuotaRequest) Reset() {
+	*x = ReleaseQuotaRequest{}
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseQuotaRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseQuotaRequest) ProtoMessage() {}
+
+func (x *ReleaseQuotaRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_smarthire_candidate_v1_candidate_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseQuotaRequest.ProtoReflect.Descriptor instead.
+func (*ReleaseQuotaRequest) Descriptor() ([]byte, []int) {
+	return file_smarthire_candidate_v1_candidate_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ReleaseQuotaRequest) GetApplicationId() string {
+	if x != nil {
+		return x.ApplicationId
+	}
+	return ""
+}
+
 var File_smarthire_candidate_v1_candidate_proto protoreflect.FileDescriptor
 
 const file_smarthire_candidate_v1_candidate_proto_rawDesc = "" +
 	"\n" +
-	"&smarthire/candidate/v1/candidate.proto\x12\x16smarthire.candidate.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x88\x02\n" +
+	"&smarthire/candidate/v1/candidate.proto\x12\x16smarthire.candidate.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x88\x02\n" +
 	"\aProfile\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n" +
 	"\tfull_name\x18\x02 \x01(\tR\bfullName\x12\x19\n" +
@@ -1446,13 +1543,19 @@ const file_smarthire_candidate_v1_candidate_proto_rawDesc = "" +
 	"\v_salary_max\"~\n" +
 	"\x1bListRecommendedJobsResponse\x12:\n" +
 	"\x04jobs\x18\x01 \x03(\v2&.smarthire.candidate.v1.RecommendedJobR\x04jobs\x12#\n" +
-	"\rmodel_version\x18\x02 \x01(\tR\fmodelVersion*\x82\x01\n" +
+	"\rmodel_version\x18\x02 \x01(\tR\fmodelVersion\"s\n" +
+	"\x13ReserveQuotaRequest\x12/\n" +
+	"\x0eapplication_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\rapplicationId\x12+\n" +
+	"\fcandidate_id\x18\x02 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\vcandidateId\"F\n" +
+	"\x13ReleaseQuotaRequest\x12/\n" +
+	"\x0eapplication_id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\rapplicationId*\x82\x01\n" +
 	"\bCVStatus\x12\x19\n" +
 	"\x15CV_STATUS_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13CV_STATUS_UPLOADING\x10\x01\x12\x16\n" +
 	"\x12CV_STATUS_UPLOADED\x10\x02\x12\x14\n" +
 	"\x10CV_STATUS_PARSED\x10\x03\x12\x14\n" +
-	"\x10CV_STATUS_FAILED\x10\x042\x91\t\n" +
+	"\x10CV_STATUS_FAILED\x10\x042\xbb\n" +
+	"\n" +
 	"\x10CandidateService\x12t\n" +
 	"\fGetMyProfile\x12+.smarthire.candidate.v1.GetMyProfileRequest\x1a\x1f.smarthire.candidate.v1.Profile\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/me/profile\x12}\n" +
 	"\x0fUpsertMyProfile\x12..smarthire.candidate.v1.UpsertMyProfileRequest\x1a\x1f.smarthire.candidate.v1.Profile\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\x1a\x0e/v1/me/profile\x12\x91\x01\n" +
@@ -1462,7 +1565,9 @@ const file_smarthire_candidate_v1_candidate_proto_rawDesc = "" +
 	"\tListMyCVs\x12(.smarthire.candidate.v1.ListMyCVsRequest\x1a).smarthire.candidate.v1.ListMyCVsResponse\"\x0f\x82\xd3\xe4\x93\x02\t\x12\a/v1/cvs\x12\x84\x01\n" +
 	"\x10UpdateParsedData\x12/.smarthire.candidate.v1.UpdateParsedDataRequest\x1a\x1a.smarthire.candidate.v1.CV\"#\x82\xd3\xe4\x93\x02\x1d:\x06parsed2\x13/v1/cvs/{id}/parsed\x12r\n" +
 	"\tReparseCV\x12(.smarthire.candidate.v1.ReparseCVRequest\x1a\x1a.smarthire.candidate.v1.CV\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/cvs/{id}:reparse\x12\xa5\x01\n" +
-	"\x13ListRecommendedJobs\x122.smarthire.candidate.v1.ListRecommendedJobsRequest\x1a3.smarthire.candidate.v1.ListRecommendedJobsResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/cvs/{id}/recommended-jobsB\xf3\x01\n" +
+	"\x13ListRecommendedJobs\x122.smarthire.candidate.v1.ListRecommendedJobsRequest\x1a3.smarthire.candidate.v1.ListRecommendedJobsResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/cvs/{id}/recommended-jobs\x12S\n" +
+	"\fReserveQuota\x12+.smarthire.candidate.v1.ReserveQuotaRequest\x1a\x16.google.protobuf.Empty\x12S\n" +
+	"\fReleaseQuota\x12+.smarthire.candidate.v1.ReleaseQuotaRequest\x1a\x16.google.protobuf.EmptyB\xf3\x01\n" +
 	"\x1acom.smarthire.candidate.v1B\x0eCandidateProtoP\x01ZKgithub.com/nuroqzavitex/smarthire/gen/go/smarthire/candidate/v1;candidatev1\xa2\x02\x03SCX\xaa\x02\x16Smarthire.Candidate.V1\xca\x02\x16Smarthire\\Candidate\\V1\xe2\x02\"Smarthire\\Candidate\\V1\\GPBMetadata\xea\x02\x18Smarthire::Candidate::V1b\x06proto3"
 
 var (
@@ -1478,7 +1583,7 @@ func file_smarthire_candidate_v1_candidate_proto_rawDescGZIP() []byte {
 }
 
 var file_smarthire_candidate_v1_candidate_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_smarthire_candidate_v1_candidate_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_smarthire_candidate_v1_candidate_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_smarthire_candidate_v1_candidate_proto_goTypes = []any{
 	(CVStatus)(0),                       // 0: smarthire.candidate.v1.CVStatus
 	(*Profile)(nil),                     // 1: smarthire.candidate.v1.Profile
@@ -1500,19 +1605,22 @@ var file_smarthire_candidate_v1_candidate_proto_goTypes = []any{
 	(*ListRecommendedJobsRequest)(nil),  // 17: smarthire.candidate.v1.ListRecommendedJobsRequest
 	(*RecommendedJob)(nil),              // 18: smarthire.candidate.v1.RecommendedJob
 	(*ListRecommendedJobsResponse)(nil), // 19: smarthire.candidate.v1.ListRecommendedJobsResponse
-	(*timestamppb.Timestamp)(nil),       // 20: google.protobuf.Timestamp
+	(*ReserveQuotaRequest)(nil),         // 20: smarthire.candidate.v1.ReserveQuotaRequest
+	(*ReleaseQuotaRequest)(nil),         // 21: smarthire.candidate.v1.ReleaseQuotaRequest
+	(*timestamppb.Timestamp)(nil),       // 22: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),               // 23: google.protobuf.Empty
 }
 var file_smarthire_candidate_v1_candidate_proto_depIdxs = []int32{
-	20, // 0: smarthire.candidate.v1.Profile.created_at:type_name -> google.protobuf.Timestamp
-	20, // 1: smarthire.candidate.v1.Profile.updated_at:type_name -> google.protobuf.Timestamp
+	22, // 0: smarthire.candidate.v1.Profile.created_at:type_name -> google.protobuf.Timestamp
+	22, // 1: smarthire.candidate.v1.Profile.updated_at:type_name -> google.protobuf.Timestamp
 	4,  // 2: smarthire.candidate.v1.ParsedCV.education:type_name -> smarthire.candidate.v1.Education
 	5,  // 3: smarthire.candidate.v1.ParsedCV.experiences:type_name -> smarthire.candidate.v1.Experience
 	0,  // 4: smarthire.candidate.v1.CV.status:type_name -> smarthire.candidate.v1.CVStatus
 	6,  // 5: smarthire.candidate.v1.CV.parsed:type_name -> smarthire.candidate.v1.ParsedCV
-	20, // 6: smarthire.candidate.v1.CV.created_at:type_name -> google.protobuf.Timestamp
-	20, // 7: smarthire.candidate.v1.CV.updated_at:type_name -> google.protobuf.Timestamp
-	20, // 8: smarthire.candidate.v1.CV.parsed_at:type_name -> google.protobuf.Timestamp
-	20, // 9: smarthire.candidate.v1.CreateUploadURLResponse.expires_at:type_name -> google.protobuf.Timestamp
+	22, // 6: smarthire.candidate.v1.CV.created_at:type_name -> google.protobuf.Timestamp
+	22, // 7: smarthire.candidate.v1.CV.updated_at:type_name -> google.protobuf.Timestamp
+	22, // 8: smarthire.candidate.v1.CV.parsed_at:type_name -> google.protobuf.Timestamp
+	22, // 9: smarthire.candidate.v1.CreateUploadURLResponse.expires_at:type_name -> google.protobuf.Timestamp
 	7,  // 10: smarthire.candidate.v1.ListMyCVsResponse.cvs:type_name -> smarthire.candidate.v1.CV
 	6,  // 11: smarthire.candidate.v1.UpdateParsedDataRequest.parsed:type_name -> smarthire.candidate.v1.ParsedCV
 	16, // 12: smarthire.candidate.v1.RecommendedJob.breakdown:type_name -> smarthire.candidate.v1.MatchBreakdown
@@ -1526,17 +1634,21 @@ var file_smarthire_candidate_v1_candidate_proto_depIdxs = []int32{
 	14, // 20: smarthire.candidate.v1.CandidateService.UpdateParsedData:input_type -> smarthire.candidate.v1.UpdateParsedDataRequest
 	15, // 21: smarthire.candidate.v1.CandidateService.ReparseCV:input_type -> smarthire.candidate.v1.ReparseCVRequest
 	17, // 22: smarthire.candidate.v1.CandidateService.ListRecommendedJobs:input_type -> smarthire.candidate.v1.ListRecommendedJobsRequest
-	1,  // 23: smarthire.candidate.v1.CandidateService.GetMyProfile:output_type -> smarthire.candidate.v1.Profile
-	1,  // 24: smarthire.candidate.v1.CandidateService.UpsertMyProfile:output_type -> smarthire.candidate.v1.Profile
-	9,  // 25: smarthire.candidate.v1.CandidateService.CreateUploadURL:output_type -> smarthire.candidate.v1.CreateUploadURLResponse
-	7,  // 26: smarthire.candidate.v1.CandidateService.CompleteUpload:output_type -> smarthire.candidate.v1.CV
-	7,  // 27: smarthire.candidate.v1.CandidateService.GetCV:output_type -> smarthire.candidate.v1.CV
-	13, // 28: smarthire.candidate.v1.CandidateService.ListMyCVs:output_type -> smarthire.candidate.v1.ListMyCVsResponse
-	7,  // 29: smarthire.candidate.v1.CandidateService.UpdateParsedData:output_type -> smarthire.candidate.v1.CV
-	7,  // 30: smarthire.candidate.v1.CandidateService.ReparseCV:output_type -> smarthire.candidate.v1.CV
-	19, // 31: smarthire.candidate.v1.CandidateService.ListRecommendedJobs:output_type -> smarthire.candidate.v1.ListRecommendedJobsResponse
-	23, // [23:32] is the sub-list for method output_type
-	14, // [14:23] is the sub-list for method input_type
+	20, // 23: smarthire.candidate.v1.CandidateService.ReserveQuota:input_type -> smarthire.candidate.v1.ReserveQuotaRequest
+	21, // 24: smarthire.candidate.v1.CandidateService.ReleaseQuota:input_type -> smarthire.candidate.v1.ReleaseQuotaRequest
+	1,  // 25: smarthire.candidate.v1.CandidateService.GetMyProfile:output_type -> smarthire.candidate.v1.Profile
+	1,  // 26: smarthire.candidate.v1.CandidateService.UpsertMyProfile:output_type -> smarthire.candidate.v1.Profile
+	9,  // 27: smarthire.candidate.v1.CandidateService.CreateUploadURL:output_type -> smarthire.candidate.v1.CreateUploadURLResponse
+	7,  // 28: smarthire.candidate.v1.CandidateService.CompleteUpload:output_type -> smarthire.candidate.v1.CV
+	7,  // 29: smarthire.candidate.v1.CandidateService.GetCV:output_type -> smarthire.candidate.v1.CV
+	13, // 30: smarthire.candidate.v1.CandidateService.ListMyCVs:output_type -> smarthire.candidate.v1.ListMyCVsResponse
+	7,  // 31: smarthire.candidate.v1.CandidateService.UpdateParsedData:output_type -> smarthire.candidate.v1.CV
+	7,  // 32: smarthire.candidate.v1.CandidateService.ReparseCV:output_type -> smarthire.candidate.v1.CV
+	19, // 33: smarthire.candidate.v1.CandidateService.ListRecommendedJobs:output_type -> smarthire.candidate.v1.ListRecommendedJobsResponse
+	23, // 34: smarthire.candidate.v1.CandidateService.ReserveQuota:output_type -> google.protobuf.Empty
+	23, // 35: smarthire.candidate.v1.CandidateService.ReleaseQuota:output_type -> google.protobuf.Empty
+	25, // [25:36] is the sub-list for method output_type
+	14, // [14:25] is the sub-list for method input_type
 	14, // [14:14] is the sub-list for extension type_name
 	14, // [14:14] is the sub-list for extension extendee
 	0,  // [0:14] is the sub-list for field type_name
@@ -1560,7 +1672,7 @@ func file_smarthire_candidate_v1_candidate_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_smarthire_candidate_v1_candidate_proto_rawDesc), len(file_smarthire_candidate_v1_candidate_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   19,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

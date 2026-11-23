@@ -1,6 +1,11 @@
 consumes:
 - application/json
 definitions:
+  ApplicationServiceUpdateApplicationStatusBody:
+    properties:
+      status:
+        $ref: '#/definitions/v1ApplicationStatus'
+    type: object
   CandidateServiceCompleteUploadBody:
     type: object
   CandidateServiceReparseCVBody:
@@ -94,6 +99,29 @@ definitions:
       message:
         type: string
     type: object
+  smarthireApplicationV1ScoreBreakdown:
+    properties:
+      experience_fit:
+        format: double
+        type: number
+      location_fit:
+        format: double
+        type: number
+      matched_skills:
+        items:
+          type: string
+        type: array
+      missing_skills:
+        items:
+          type: string
+        type: array
+      required_skill_coverage:
+        format: double
+        type: number
+      semantic_similarity:
+        format: double
+        type: number
+    type: object
   smarthireCandidateV1MatchBreakdown:
     description: MatchBreakdown explains a match score (copy of smarthire.ai.v1.ScoreBreakdown).
     properties:
@@ -142,6 +170,54 @@ definitions:
         format: double
         type: number
     type: object
+  v1Application:
+    properties:
+      breakdown:
+        $ref: '#/definitions/smarthireApplicationV1ScoreBreakdown'
+      candidate_id:
+        type: string
+      created_at:
+        format: date-time
+        type: string
+      cv_id:
+        type: string
+      id:
+        type: string
+      job_id:
+        type: string
+      model_version:
+        type: string
+      reason:
+        description: |-
+          Why the saga ended where it did: quota_exceeded, job_closed, timeout,
+          ai_unavailable, not_matched; empty otherwise.
+        type: string
+      score:
+        format: double
+        type: number
+      status:
+        $ref: '#/definitions/v1ApplicationStatus'
+      updated_at:
+        format: date-time
+        type: string
+      version:
+        format: int64
+        type: string
+    type: object
+  v1ApplicationStatus:
+    default: APPLICATION_STATUS_UNSPECIFIED
+    enum:
+    - APPLICATION_STATUS_UNSPECIFIED
+    - APPLICATION_STATUS_PENDING
+    - APPLICATION_STATUS_SCREENING
+    - APPLICATION_STATUS_SCREENED
+    - APPLICATION_STATUS_NEEDS_MANUAL_REVIEW
+    - APPLICATION_STATUS_INTERVIEW
+    - APPLICATION_STATUS_OFFERED
+    - APPLICATION_STATUS_HIRED
+    - APPLICATION_STATUS_REJECTED
+    - APPLICATION_STATUS_CANCELLED
+    type: string
   v1CV:
     description: CV never exposes the storage object key or a download URL.
     properties:
@@ -260,6 +336,32 @@ definitions:
       value:
         type: string
     type: object
+  v1GetApplicationResponse:
+    properties:
+      application:
+        $ref: '#/definitions/v1Application'
+      history:
+        items:
+          $ref: '#/definitions/v1HistoryEntry'
+          type: object
+        type: array
+    type: object
+  v1HistoryEntry:
+    properties:
+      actor:
+        title: user id, or "system" for the saga
+        type: string
+      at:
+        format: date-time
+        type: string
+      from:
+        $ref: '#/definitions/v1ApplicationStatus'
+        title: UNSPECIFIED for the creation entry
+      reason:
+        type: string
+      to:
+        $ref: '#/definitions/v1ApplicationStatus'
+    type: object
   v1Job:
     properties:
       created_at:
@@ -321,6 +423,16 @@ definitions:
     - JOB_STATUS_OPEN
     - JOB_STATUS_CLOSED
     type: string
+  v1ListApplicationsResponse:
+    properties:
+      applications:
+        items:
+          $ref: '#/definitions/v1Application'
+          type: object
+        type: array
+      next_page_token:
+        type: string
+    type: object
   v1ListJobsFacets:
     properties:
       levels:
@@ -503,6 +615,13 @@ definitions:
           type: string
         type: array
     type: object
+  v1SubmitApplicationRequest:
+    properties:
+      cv_id:
+        type: string
+      job_id:
+        type: string
+    type: object
   v1UpsertMyProfileRequest:
     properties:
       full_name:
@@ -528,6 +647,119 @@ info:
   title: SmartHire Gateway API
   version: version not set
 paths:
+  /v1/applications:
+    get:
+      operationId: ApplicationService_ListApplications
+      parameters:
+      - description: empty = any job
+        in: query
+        name: job_id
+        required: false
+        type: string
+      - default: APPLICATION_STATUS_UNSPECIFIED
+        description: 0 = any status
+        enum:
+        - APPLICATION_STATUS_UNSPECIFIED
+        - APPLICATION_STATUS_PENDING
+        - APPLICATION_STATUS_SCREENING
+        - APPLICATION_STATUS_SCREENED
+        - APPLICATION_STATUS_NEEDS_MANUAL_REVIEW
+        - APPLICATION_STATUS_INTERVIEW
+        - APPLICATION_STATUS_OFFERED
+        - APPLICATION_STATUS_HIRED
+        - APPLICATION_STATUS_REJECTED
+        - APPLICATION_STATUS_CANCELLED
+        in: query
+        name: status
+        required: false
+        type: string
+      - description: 0 = default 20
+        format: int32
+        in: query
+        name: page_size
+        required: false
+        type: integer
+      - in: query
+        name: page_token
+        required: false
+        type: string
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1ListApplicationsResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      summary: Candidates see their own applications, recruiters those on their jobs.
+      tags:
+      - ApplicationService
+    post:
+      operationId: ApplicationService_SubmitApplication
+      parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/v1SubmitApplicationRequest'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1Application'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      summary: |-
+        Requires the Idempotency-Key header (gRPC metadata "idempotency-key").
+        Answers 202: the application starts PENDING and the saga moves it on.
+      tags:
+      - ApplicationService
+  /v1/applications/{id}:
+    get:
+      operationId: ApplicationService_GetApplication
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1GetApplicationResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - ApplicationService
+  /v1/applications/{id}/status:
+    patch:
+      operationId: ApplicationService_UpdateApplicationStatus
+      parameters:
+      - in: path
+        name: id
+        required: true
+        type: string
+      - in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/ApplicationServiceUpdateApplicationStatusBody'
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1Application'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+      - ApplicationService
   /v1/auth/login:
     post:
       description: 'Rate limited to 10 requests per minute per IP. Sets the HttpOnly
@@ -1111,6 +1343,10 @@ tags:
     AIService is internal to the compose network (no JWT, ADR 0010): Job and
     Candidate check ownership before calling it.
   name: AIService
+- description: |-
+    ApplicationService: candidates apply to open jobs; an orchestration saga
+    reserves quota and scores the application in the background (ADR 0011).
+  name: ApplicationService
 - name: AuthService
 - name: CandidateService
 - name: JobService

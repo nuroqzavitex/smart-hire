@@ -250,3 +250,28 @@ func TestValidate_MatchCompleted(t *testing.T) {
 	assert.Error(t, eventschema.Validate("match.completed", buildFrom(t, "ai-service", "match.completed",
 		map[string]any{"job_id": testUUID, "model_version": "m", "top": []any{map[string]any{"candidate_id": testUUID, "cv_id": testUUID, "score": 101}}})), "score > 100")
 }
+
+func TestValidate_ApplicationSubmitted(t *testing.T) {
+	p := map[string]any{"application_id": testUUID, "job_id": testUUID, "candidate_id": testUUID, "recruiter_id": testUUID, "cv_id": testUUID}
+	assert.NoError(t, eventschema.Validate("application.submitted", buildFrom(t, "application-service", "application.submitted", p)))
+	delete(p, "application_id")
+	assert.Error(t, eventschema.Validate("application.submitted", buildFrom(t, "application-service", "application.submitted", p)), "missing application_id")
+}
+
+func TestValidate_ApplicationStatusChanged(t *testing.T) {
+	p := func(from, to, reason, score any) map[string]any {
+		return map[string]any{"application_id": testUUID, "job_id": testUUID, "candidate_id": testUUID, "recruiter_id": testUUID,
+			"from": from, "to": to, "reason": reason, "score": score, "version": 2, "actor": "system"}
+	}
+	ok := func(m map[string]any) error {
+		return eventschema.Validate("application.status_changed", buildFrom(t, "application-service", "application.status_changed", m))
+	}
+	assert.NoError(t, ok(p(nil, "PENDING", nil, nil)), "created")
+	assert.NoError(t, ok(p("SCREENING", "SCREENED", nil, 87.5)))
+	assert.NoError(t, ok(p("PENDING", "CANCELLED", "quota_exceeded", nil)))
+	assert.Error(t, ok(p("PENDING", "pending", nil, nil)), "lowercase status")
+	assert.Error(t, ok(p("SCREENING", "SCREENED", nil, 101)), "score > 100")
+	m := p(nil, "PENDING", nil, nil)
+	delete(m, "application_id")
+	assert.Error(t, ok(m), "missing application_id")
+}

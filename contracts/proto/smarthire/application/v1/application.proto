@@ -1,0 +1,96 @@
+syntax = "proto3";
+package smarthire.application.v1;
+
+import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// ApplicationService: candidates apply to open jobs; an orchestration saga
+// reserves quota and scores the application in the background (ADR 0011).
+service ApplicationService {
+  // Requires the Idempotency-Key header (gRPC metadata "idempotency-key").
+  // Answers 202: the application starts PENDING and the saga moves it on.
+  rpc SubmitApplication(SubmitApplicationRequest) returns (Application) { option (google.api.http) = { post: "/v1/applications" body: "*" }; }
+  rpc GetApplication(GetApplicationRequest) returns (GetApplicationResponse) { option (google.api.http) = { get: "/v1/applications/{id}" }; }
+  // Candidates see their own applications, recruiters those on their jobs.
+  rpc ListApplications(ListApplicationsRequest) returns (ListApplicationsResponse) { option (google.api.http) = { get: "/v1/applications" }; }
+  rpc UpdateApplicationStatus(UpdateApplicationStatusRequest) returns (Application) { option (google.api.http) = { patch: "/v1/applications/{id}/status" body: "*" }; }
+}
+
+enum ApplicationStatus {
+  APPLICATION_STATUS_UNSPECIFIED = 0;
+  APPLICATION_STATUS_PENDING = 1;
+  APPLICATION_STATUS_SCREENING = 2;
+  APPLICATION_STATUS_SCREENED = 3;
+  APPLICATION_STATUS_NEEDS_MANUAL_REVIEW = 4;
+  APPLICATION_STATUS_INTERVIEW = 5;
+  APPLICATION_STATUS_OFFERED = 6;
+  APPLICATION_STATUS_HIRED = 7;
+  APPLICATION_STATUS_REJECTED = 8;
+  APPLICATION_STATUS_CANCELLED = 9;
+}
+
+message ScoreBreakdown {
+  double semantic_similarity = 1;
+  double required_skill_coverage = 2;
+  double experience_fit = 3;
+  double location_fit = 4;
+  repeated string matched_skills = 5;
+  repeated string missing_skills = 6;
+}
+
+message Application {
+  string id = 1;
+  string job_id = 2;
+  string candidate_id = 3;
+  string cv_id = 4;
+  ApplicationStatus status = 5;
+  // Why the saga ended where it did: quota_exceeded, job_closed, timeout,
+  // ai_unavailable, not_matched; empty otherwise.
+  string reason = 6;
+  optional double score = 7;
+  ScoreBreakdown breakdown = 8;
+  string model_version = 9;
+  int64 version = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+message HistoryEntry {
+  ApplicationStatus from = 1; // UNSPECIFIED for the creation entry
+  ApplicationStatus to = 2;
+  string actor = 3; // user id, or "system" for the saga
+  string reason = 4;
+  google.protobuf.Timestamp at = 5;
+}
+
+message SubmitApplicationRequest {
+  string job_id = 1 [(buf.validate.field).string.uuid = true];
+  string cv_id = 2 [(buf.validate.field).string.uuid = true];
+}
+
+message GetApplicationRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetApplicationResponse {
+  Application application = 1;
+  repeated HistoryEntry history = 2;
+}
+
+message ListApplicationsRequest {
+  string job_id = 1 [(buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE, (buf.validate.field).string.uuid = true]; // empty = any job
+  ApplicationStatus status = 2 [(buf.validate.field).enum.defined_only = true]; // 0 = any status
+  int32 page_size = 3 [(buf.validate.field).int32 = {gte: 0, lte: 100}]; // 0 = default 20
+  string page_token = 4 [(buf.validate.field).string.max_len = 512];
+}
+
+message ListApplicationsResponse {
+  repeated Application applications = 1;
+  string next_page_token = 2;
+}
+
+message UpdateApplicationStatusRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  ApplicationStatus status = 2 [(buf.validate.field).enum = {defined_only: true, not_in: [0]}];
+}

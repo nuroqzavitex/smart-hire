@@ -10,6 +10,10 @@
       "description": "AIService is internal to the compose network (no JWT, ADR 0010): Job and\nCandidate check ownership before calling it."
     },
     {
+      "name": "ApplicationService",
+      "description": "ApplicationService: candidates apply to open jobs; an orchestration saga\nreserves quota and scores the application in the background (ADR 0011)."
+    },
+    {
       "name": "AuthService"
     },
     {
@@ -26,6 +30,171 @@
     "application/json"
   ],
   "paths": {
+    "/v1/applications": {
+      "get": {
+        "summary": "Candidates see their own applications, recruiters those on their jobs.",
+        "operationId": "ApplicationService_ListApplications",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListApplicationsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "job_id",
+            "description": "empty = any job",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "status",
+            "description": "0 = any status",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "enum": [
+              "APPLICATION_STATUS_UNSPECIFIED",
+              "APPLICATION_STATUS_PENDING",
+              "APPLICATION_STATUS_SCREENING",
+              "APPLICATION_STATUS_SCREENED",
+              "APPLICATION_STATUS_NEEDS_MANUAL_REVIEW",
+              "APPLICATION_STATUS_INTERVIEW",
+              "APPLICATION_STATUS_OFFERED",
+              "APPLICATION_STATUS_HIRED",
+              "APPLICATION_STATUS_REJECTED",
+              "APPLICATION_STATUS_CANCELLED"
+            ],
+            "default": "APPLICATION_STATUS_UNSPECIFIED"
+          },
+          {
+            "name": "page_size",
+            "description": "0 = default 20",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page_token",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ApplicationService"
+        ]
+      },
+      "post": {
+        "summary": "Requires the Idempotency-Key header (gRPC metadata \"idempotency-key\").\nAnswers 202: the application starts PENDING and the saga moves it on.",
+        "operationId": "ApplicationService_SubmitApplication",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Application"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SubmitApplicationRequest"
+            }
+          }
+        ],
+        "tags": [
+          "ApplicationService"
+        ]
+      }
+    },
+    "/v1/applications/{id}": {
+      "get": {
+        "operationId": "ApplicationService_GetApplication",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetApplicationResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ApplicationService"
+        ]
+      }
+    },
+    "/v1/applications/{id}/status": {
+      "patch": {
+        "operationId": "ApplicationService_UpdateApplicationStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Application"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ApplicationServiceUpdateApplicationStatusBody"
+            }
+          }
+        ],
+        "tags": [
+          "ApplicationService"
+        ]
+      }
+    },
     "/v1/auth/register": {
       "post": {
         "operationId": "AuthService_Register",
@@ -761,6 +930,14 @@
     }
   },
   "definitions": {
+    "ApplicationServiceUpdateApplicationStatusBody": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/v1ApplicationStatus"
+        }
+      }
+    },
     "CandidateServiceCompleteUploadBody": {
       "type": "object"
     },
@@ -832,6 +1009,39 @@
         }
       }
     },
+    "smarthireApplicationV1ScoreBreakdown": {
+      "type": "object",
+      "properties": {
+        "semantic_similarity": {
+          "type": "number",
+          "format": "double"
+        },
+        "required_skill_coverage": {
+          "type": "number",
+          "format": "double"
+        },
+        "experience_fit": {
+          "type": "number",
+          "format": "double"
+        },
+        "location_fit": {
+          "type": "number",
+          "format": "double"
+        },
+        "matched_skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "smarthireCandidateV1MatchBreakdown": {
       "type": "object",
       "properties": {
@@ -899,6 +1109,68 @@
         }
       },
       "description": "MatchBreakdown explains a match score (copy of smarthire.ai.v1.ScoreBreakdown)."
+    },
+    "v1Application": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "cv_id": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/v1ApplicationStatus"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why the saga ended where it did: quota_exceeded, job_closed, timeout,\nai_unavailable, not_matched; empty otherwise."
+        },
+        "score": {
+          "type": "number",
+          "format": "double"
+        },
+        "breakdown": {
+          "$ref": "#/definitions/smarthireApplicationV1ScoreBreakdown"
+        },
+        "model_version": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string",
+          "format": "int64"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "v1ApplicationStatus": {
+      "type": "string",
+      "enum": [
+        "APPLICATION_STATUS_UNSPECIFIED",
+        "APPLICATION_STATUS_PENDING",
+        "APPLICATION_STATUS_SCREENING",
+        "APPLICATION_STATUS_SCREENED",
+        "APPLICATION_STATUS_NEEDS_MANUAL_REVIEW",
+        "APPLICATION_STATUS_INTERVIEW",
+        "APPLICATION_STATUS_OFFERED",
+        "APPLICATION_STATUS_HIRED",
+        "APPLICATION_STATUS_REJECTED",
+        "APPLICATION_STATUS_CANCELLED"
+      ],
+      "default": "APPLICATION_STATUS_UNSPECIFIED"
     },
     "v1CV": {
       "type": "object",
@@ -1069,6 +1341,44 @@
         }
       }
     },
+    "v1GetApplicationResponse": {
+      "type": "object",
+      "properties": {
+        "application": {
+          "$ref": "#/definitions/v1Application"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1HistoryEntry"
+          }
+        }
+      }
+    },
+    "v1HistoryEntry": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "$ref": "#/definitions/v1ApplicationStatus",
+          "title": "UNSPECIFIED for the creation entry"
+        },
+        "to": {
+          "$ref": "#/definitions/v1ApplicationStatus"
+        },
+        "actor": {
+          "type": "string",
+          "title": "user id, or \"system\" for the saga"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "v1Job": {
       "type": "object",
       "properties": {
@@ -1152,6 +1462,21 @@
         "JOB_STATUS_CLOSED"
       ],
       "default": "JOB_STATUS_UNSPECIFIED"
+    },
+    "v1ListApplicationsResponse": {
+      "type": "object",
+      "properties": {
+        "applications": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Application"
+          }
+        },
+        "next_page_token": {
+          "type": "string"
+        }
+      }
     },
     "v1ListJobsFacets": {
       "type": "object",
@@ -1410,6 +1735,17 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "v1SubmitApplicationRequest": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string"
+        },
+        "cv_id": {
+          "type": "string"
         }
       }
     },

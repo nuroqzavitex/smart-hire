@@ -3,6 +3,7 @@ package smarthire.candidate.v1;
 
 import "buf/validate/validate.proto";
 import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
 service CandidateService {
@@ -16,6 +17,15 @@ service CandidateService {
   rpc ReparseCV(ReparseCVRequest) returns (CV) { option (google.api.http) = { post: "/v1/cvs/{id}:reparse" body: "*" }; }
   // Open jobs ranked for one of the caller's parsed CVs by the AI service.
   rpc ListRecommendedJobs(ListRecommendedJobsRequest) returns (ListRecommendedJobsResponse) { option (google.api.http) = { get: "/v1/cvs/{id}/recommended-jobs" }; }
+
+  // Internal (no HTTP route, no JWT; ADR 0011): the application saga holds
+  // one unit of the candidate's daily quota per application. Both are
+  // idempotent per application_id; ReserveQuota answers RESOURCE_EXHAUSTED
+  // when the quota is used up and ABORTED when the reservation was already
+  // released. ReleaseQuota of an unknown application records the release so
+  // a late ReserveQuota cannot take quota.
+  rpc ReserveQuota(ReserveQuotaRequest) returns (google.protobuf.Empty);
+  rpc ReleaseQuota(ReleaseQuotaRequest) returns (google.protobuf.Empty);
 }
 
 enum CVStatus {
@@ -153,4 +163,13 @@ message RecommendedJob {
 message ListRecommendedJobsResponse {
   repeated RecommendedJob jobs = 1;
   string model_version = 2;
+}
+
+message ReserveQuotaRequest {
+  string application_id = 1 [(buf.validate.field).string.uuid = true];
+  string candidate_id = 2 [(buf.validate.field).string.uuid = true];
+}
+
+message ReleaseQuotaRequest {
+  string application_id = 1 [(buf.validate.field).string.uuid = true];
 }
