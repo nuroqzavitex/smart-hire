@@ -92,6 +92,7 @@ func (s *Service) ListOpen(ctx context.Context, f SearchFilter, pr PageRequest) 
 			return Page{}, ctx.Err()
 		}
 		s.Logger.WarnContext(ctx, "job search read model failed, using postgres", "error_type", fmt.Sprintf("%T", err))
+		searchFallback(ctx)
 		page, err = s.listFromPostgres(ctx, f, size, tok)
 		page.Degraded = true
 		return page, err

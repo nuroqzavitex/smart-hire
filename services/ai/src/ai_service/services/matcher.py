@@ -25,6 +25,8 @@ from ai_service.domain.events import (
     new_envelope,
 )
 from ai_service.domain.matching import CvProfile, JobProfile, MatchRow, cv_text, job_text, score
+from ai_service.metrics import Instruments
+from ai_service.metrics import instruments as default_instruments
 from ai_service.services.cv_uploaded_handler import PermanentError
 from ai_service.services.embedding import Embedder
 
@@ -88,7 +90,9 @@ class MatchHandler:
         *,
         clock: Callable[[], datetime],
         trace_id: Callable[[], str],
+        instruments: Instruments | None = None,
     ) -> None:
+        self._instruments = instruments or default_instruments()
         self._store = store
         self._vectors = vectors
         self._embedder = embedder
@@ -168,6 +172,7 @@ class MatchHandler:
             if cv is None or cv.parsed is None:
                 continue
             total, breakdown = score(sim, job, cv.parsed)
+            self._instruments.match_score(total)
             rows.append(
                 MatchRow(job.job_id, cv_id, cv.candidate_id, total, breakdown, self._embedder.model_version)
             )
@@ -240,6 +245,7 @@ class MatchHandler:
             if job is None:
                 continue
             total, breakdown = score(sim, job, cv.parsed)
+            self._instruments.match_score(total)
             rows.append(
                 MatchRow(job_id, cv.cv_id, cv.candidate_id, total, breakdown, self._embedder.model_version)
             )

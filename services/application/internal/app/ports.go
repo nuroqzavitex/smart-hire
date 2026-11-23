@@ -71,6 +71,8 @@ type SagaRepo interface {
 	// Save writes s only if the stored version still equals s.Version (and
 	// then increments it); false means another writer won.
 	Save(ctx context.Context, s domain.Saga) (bool, error)
+	// CountByState counts sagas per state (saga.instances).
+	CountByState(ctx context.Context) (map[domain.SagaState]int, error)
 	// GetByApplication returns domain.ErrApplicationNotFound when absent.
 	GetByApplication(ctx context.Context, appID uuid.UUID) (domain.Saga, error)
 	// CancelRunningForJob moves every RUNNING saga of the job to

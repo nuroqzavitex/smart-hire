@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nuroqzavitex/smarthire/pkg/apperr"
+	"github.com/nuroqzavitex/smarthire/pkg/otel/oteltest"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/app"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/domain"
 )
@@ -166,4 +167,15 @@ func TestListOpen_CancelledRequestDoesNotFallBack(t *testing.T) {
 	_, err := e.svc.ListOpen(ctx, app.SearchFilter{}, app.PageRequest{})
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.Zero(t, cj.calls, "a client that went away gets no postgres fallback")
+}
+
+func TestListOpen_FallbackCounted(t *testing.T) {
+	m := oteltest.Install(t)
+	e, _ := backendEnv(t, &fakeBackend{err: errors.New("connection refused")})
+	e.seedOpen(t, 1)
+	_, err := e.svc.ListOpen(context.Background(), app.SearchFilter{}, app.PageRequest{Size: 2})
+	require.NoError(t, err)
+	v, ok := m.Int64(t, "search.fallback")
+	require.True(t, ok)
+	assert.Equal(t, int64(1), v)
 }

@@ -10,6 +10,8 @@ from pydantic import ValidationError
 from ai_service.config import Settings
 from ai_service.domain.models import MAX_MODEL_VERSION, MAX_TEXT, ParsedCV, ParsedCVDraft, sanitize
 from ai_service.domain.skills import find_skills
+from ai_service.metrics import Instruments
+from ai_service.metrics import instruments as default_instruments
 from ai_service.services.ports import LlmInvalidOutput, LlmParser, LlmRefused
 
 SYSTEM_PROMPT = """\
@@ -79,7 +81,10 @@ def _model_version(model: str) -> str:
 class AnthropicLlmParser:
     """Structured-output parse via the official SDK (messages.parse + pydantic)."""
 
-    def __init__(self, client: anthropic.Anthropic, model: str) -> None:
+    def __init__(
+        self, client: anthropic.Anthropic, model: str, *, instruments: Instruments | None = None
+    ) -> None:
+        self._instruments = instruments or default_instruments()
         self._client = client
         self._model = model
         self._model_version = _model_version(model)
@@ -116,6 +121,12 @@ class AnthropicLlmParser:
         body = raw.http_response.json()
         if not isinstance(body, dict):
             raise LlmInvalidOutput("validation")
+        usage = body.get("usage")
+        if isinstance(usage, dict):
+            self._instruments.llm_tokens(
+                input_tokens=int(usage.get("input_tokens") or 0),
+                output_tokens=int(usage.get("output_tokens") or 0),
+            )
         # A fallback model may have served the request, so track what answered.
         self._model_version = _model_version(str(body.get("model") or self._model))
         if body.get("stop_reason") == "refusal":

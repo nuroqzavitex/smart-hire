@@ -95,3 +95,16 @@ func sagaToDomain(r sqlc.SagaInstance) domain.Saga {
 		LastError: r.LastError, Version: r.Version, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }
+
+// CountByState implements app.SagaRepo.
+func (r *SagaRepo) CountByState(ctx context.Context) (map[domain.SagaState]int, error) {
+	rows, err := queries(ctx, r.pool).CountSagasByState(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("count sagas: %w", err)
+	}
+	out := make(map[domain.SagaState]int, len(rows))
+	for _, row := range rows {
+		out[domain.SagaState(row.State)] = int(row.N)
+	}
+	return out, nil
+}

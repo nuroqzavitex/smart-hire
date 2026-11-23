@@ -13,6 +13,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
+	"github.com/nuroqzavitex/smarthire/pkg/otel/oteltest"
+	"github.com/nuroqzavitex/smarthire/services/application/internal/app"
 	"github.com/nuroqzavitex/smarthire/services/application/internal/domain"
 )
 
@@ -75,4 +77,24 @@ func TestSaga_ExpiredLeaseInBatchSkipped(t *testing.T) {
 	s := e.sagas.m[second.ID]
 	assert.Equal(t, domain.StepReserveQuota, s.Step)
 	assert.Equal(t, domain.StatusPending, e.apps.m[second.ID].Status)
+}
+
+func TestSagaGauge_ReportsEveryState(t *testing.T) {
+	m := oteltest.Install(t)
+	e := newEnv(t)
+	e.submit(t)
+	e.submit(t)
+	_, done := e.submit(t)
+	s := e.sagas.m[done.ID]
+	s.State = domain.SagaCompleted
+	e.sagas.m[done.ID] = s
+	reg, err := app.RegisterSagaGauge(otel.GetMeterProvider().Meter("t"), e.sagas)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reg.Unregister() })
+
+	for state, want := range map[string]int64{"RUNNING": 2, "COMPLETED": 1, "COMPENSATING": 0, "COMPENSATED": 0} {
+		v, ok := m.Int64(t, "saga.instances", "state", state)
+		assert.True(t, ok, state)
+		assert.Equal(t, want, v, state)
+	}
 }

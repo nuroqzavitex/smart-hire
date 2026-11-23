@@ -88,6 +88,35 @@ func (q *Queries) ClaimSagas(ctx context.Context, arg ClaimSagasParams) ([]SagaI
 	return items, nil
 }
 
+const countSagasByState = `-- name: CountSagasByState :many
+SELECT state, count(*)::int AS n FROM saga_instances GROUP BY state
+`
+
+type CountSagasByStateRow struct {
+	State string
+	N     int32
+}
+
+func (q *Queries) CountSagasByState(ctx context.Context) ([]CountSagasByStateRow, error) {
+	rows, err := q.db.Query(ctx, countSagasByState)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountSagasByStateRow
+	for rows.Next() {
+		var i CountSagasByStateRow
+		if err := rows.Scan(&i.State, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createSaga = `-- name: CreateSaga :exec
 INSERT INTO saga_instances (id, application_id, job_id, step, state, attempts, next_run_at,
     deadline_at, step_started_at, cancel_reason, last_error, version, created_at, updated_at)

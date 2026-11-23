@@ -29,3 +29,6 @@ SELECT * FROM saga_instances WHERE application_id = $1;
 UPDATE saga_instances SET state = 'COMPENSATING', step = 'RELEASE_QUOTA', cancel_reason = sqlc.arg(reason),
     next_run_at = sqlc.arg(now), attempts = 0, version = version + 1, updated_at = sqlc.arg(now)
 WHERE job_id = sqlc.arg(job_id) AND state = 'RUNNING';
+
+-- name: CountSagasByState :many
+SELECT state, count(*)::int AS n FROM saga_instances GROUP BY state;

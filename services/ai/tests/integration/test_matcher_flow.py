@@ -291,3 +291,43 @@ def test_bad_payload_is_permanent(setup: Any, bad: Any) -> None:
     handler, _, _ = setup
     with pytest.raises(PermanentError):
         handler.handle(bad())
+
+
+def test_scores_are_recorded_as_metrics(engine: Engine, qdrant_url: str) -> None:
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
+    from ai_service.metrics import Instruments
+
+    reader = InMemoryMetricReader()
+    client = QdrantClient(url=qdrant_url, timeout=5)
+    emb = FlakyEmbedder()
+    version = f"flow-{uuid.uuid4().hex[:8]}@768"
+    emb.model_version = version  # type: ignore[misc]
+    vectors = QdrantVectors(client, version)
+    vectors.ensure_collections()
+    try:
+        handler = MatchHandler(
+            PgMatchStore(engine),
+            vectors,
+            emb,
+            clock=lambda: NOW,
+            trace_id=lambda: "t",
+            instruments=Instruments(MeterProvider(metric_readers=[reader])),
+        )
+        handler.handle(job_event(uuid.uuid4()))
+        handler.handle(cv_event(uuid.uuid4(), uuid.uuid4()))
+        data = reader.get_metrics_data()
+        assert data is not None
+        counts = [
+            p.count
+            for rm in data.resource_metrics
+            for sm in rm.scope_metrics
+            for m in sm.metrics
+            if m.name == "ai.match.score"
+            for p in m.data.data_points
+        ]
+        assert counts == [1], "the CV scored against the one open job"
+    finally:
+        for name in collection_names(version):
+            client.delete_collection(name)

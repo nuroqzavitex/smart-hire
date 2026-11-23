@@ -175,6 +175,14 @@ func (f *fakeSagas) Save(_ context.Context, s domain.Saga) (bool, error) {
 	return true, nil
 }
 
+func (f *fakeSagas) CountByState(context.Context) (map[domain.SagaState]int, error) {
+	out := map[domain.SagaState]int{}
+	for _, s := range f.m {
+		out[s.State]++
+	}
+	return out, nil
+}
+
 func (f *fakeSagas) GetByApplication(_ context.Context, id uuid.UUID) (domain.Saga, error) {
 	s, ok := f.m[id]
 	if !ok {

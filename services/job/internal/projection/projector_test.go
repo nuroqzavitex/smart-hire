@@ -13,6 +13,7 @@ import (
 
 	"github.com/nuroqzavitex/smarthire/pkg/event"
 	"github.com/nuroqzavitex/smarthire/pkg/kafka"
+	"github.com/nuroqzavitex/smarthire/pkg/otel/oteltest"
 	"github.com/nuroqzavitex/smarthire/services/job/internal/projection"
 )
 
@@ -278,4 +279,13 @@ type deadlineStore struct {
 func (d *deadlineStore) Put(ctx context.Context, index string, doc projection.Document) (bool, error) {
 	_, *d.saw = ctx.Deadline()
 	return d.fakeStore.Put(ctx, index, doc)
+}
+
+func TestHandle_RecordsProjectionLag(t *testing.T) {
+	m := oteltest.Install(t)
+	p := newProjector(newFakeStore("jobs_v1"), nil)
+	require.NoError(t, p.Handle(context.Background(), envelope(t, "job.created", full("open", 1, nil)), nil))
+	n, ok := m.HistogramCount(t, "projection.lag")
+	require.True(t, ok)
+	assert.Equal(t, uint64(1), n)
 }

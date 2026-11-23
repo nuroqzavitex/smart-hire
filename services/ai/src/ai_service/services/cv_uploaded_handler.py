@@ -1,6 +1,7 @@
 """cv.uploaded use case: download the PDF, parse it, store the outcome atomically (spec §5.4)."""
 
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,6 +11,8 @@ from pydantic import ValidationError
 
 from ai_service.domain.events import SOURCE_CANDIDATE, CvUploadedPayload, Envelope, result_envelope
 from ai_service.domain.models import ParseFailure, ParseOutcome
+from ai_service.metrics import Instruments
+from ai_service.metrics import instruments as default_instruments
 from ai_service.services.cv_parser import MAX_CV_BYTES, parse_cv
 from ai_service.services.ports import LlmParser, TextExtractor
 
@@ -73,7 +76,9 @@ class CvUploadedHandler:
         store: ResultStore,
         clock: Callable[[], datetime],
         trace_id: Callable[[], str],
+        instruments: Instruments | None = None,
     ) -> None:
+        self._instruments = instruments or default_instruments()
         self._storage = storage
         self._extractor = extractor
         self._llm = llm
@@ -86,7 +91,11 @@ class CvUploadedHandler:
         if self._store.is_processed(env.event_id):
             log.info("event already processed", extra={"event_id": env.event_id, "cv_id": str(cv.cv_id)})
             return
+        started = time.perf_counter()
         outcome = self._outcome(cv)
+        self._instruments.parse_duration(
+            time.perf_counter() - started, outcome="failed" if isinstance(outcome, ParseFailure) else "parsed"
+        )
         result = result_envelope(
             outcome,
             cv,

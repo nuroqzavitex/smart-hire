@@ -18,6 +18,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ai_service.adapters.kafka_producer import Publisher
 from ai_service.domain.events import Envelope
+from ai_service.metrics import Instruments
+from ai_service.metrics import instruments as default_instruments
 from ai_service.services.cv_uploaded_handler import PermanentError
 
 TOPIC = "cv.uploaded"
@@ -100,7 +102,9 @@ class RetryingConsumer:
         transient: tuple[type[Exception], ...] = (),
         transient_cap_s: float = 10.0,
         log: logging.Logger,
+        instruments: Instruments | None = None,
     ) -> None:
+        self._instruments = instruments or default_instruments()
         self._consumer = consumer
         self._dlq = dlq
         self._handler = handler
@@ -234,6 +238,7 @@ class RetryingConsumer:
             _record(span, exc, f"dlq write failed: {type(exc).__name__}")
             self._log.error("dlq write failed", extra={"error_type": type(exc).__name__})
             raise DlqWriteError("failed to write to the dead-letter topic") from None
+        self._instruments.dlq(msg.topic())
         span.set_attribute("smarthire.dlq", True)
         span.set_attribute("smarthire.dlq.reason", reason)
         self._commit(msg)

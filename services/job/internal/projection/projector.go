@@ -77,6 +77,7 @@ func (p *Projector) Handle(ctx context.Context, env event.Envelope, _ *kgo.Recor
 	for attempt := 1; ; attempt++ {
 		err := p.apply(ctx, d)
 		if err == nil {
+			p.recordLag(ctx, env)
 			return nil
 		}
 		if !reresolved && p.IndexGone != nil && p.IndexGone(err) {

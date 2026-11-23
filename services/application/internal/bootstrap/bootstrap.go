@@ -189,6 +189,11 @@ func Run(ctx context.Context, cfg config.Config) error {
 	go func() { grpcErr <- grpcx.Serve(runCtx, grpcSrv, grpcLis) }()
 	serving.Store(true)
 
+	if reg, err := app.RegisterSagaGauge(otel.Meter(serviceName), postgres.NewSagaRepo(pool)); err != nil {
+		log.Warn("saga gauge not registered", "err", err)
+	} else {
+		defer func() { _ = reg.Unregister() }()
+	}
 	// outbox.pending for the backlog alert (ADR 0013).
 	if reg, err := outbox.RegisterPendingGauge(otel.Meter(serviceName), pool); err != nil {
 		log.Warn("outbox gauge not registered", "err", err)
