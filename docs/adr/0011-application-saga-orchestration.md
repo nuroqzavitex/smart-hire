@@ -34,7 +34,7 @@ JD bị đóng hoặc xoá giữa chừng cũng dẫn tới bù trừ: Applicati
 ## Consequences
 
 - Saga xem được hoàn toàn trong một bảng (`step`, `state`, `attempts`, `last_error`, `next_run_at`), test được bằng testcontainers mà không cần broker.
-- Nhiều replica Application chạy an toàn: `SKIP LOCKED` chia việc, version guard chặn kết quả trễ.
+- Nhiều replica Application chạy được: `SKIP LOCKED` chia việc, version guard chặn kết quả trễ, và worker bỏ qua saga trong batch đã hết lease trước khi tới lượt. Còn một khe nhỏ: bước bắt đầu ngay trước khi lease hết có thể chạy song song với worker khác. Mọi bước đều idempotent, trừ một trường hợp: `ReserveQuota` hết quota thì xoá dòng giữ chỗ chứ không để tombstone, nên ở khe đó một suất quota trong ngày có thể bị giữ mà không được trả lại. Compose chạy một replica.
 - Các bước là lời gọi đồng bộ: Candidate sập thì saga chờ và thử lại, tới deadline thì bù trừ. Command/reply qua Kafka tách rời hơn nhưng cần thêm khoảng 4 topic, schema, consumer và outbox ở Candidate, cùng timeout tự cài đặt.
-- Chưa có metrics `saga_instances{state}` / `circuit_breaker_state` (để M4); hiện chỉ có log và trace.
+- Mỗi bước saga có một span (`saga <STEP>`), là cha của các lời gọi gRPC trong bước, và một log Info ghi kết quả. Event do bước phát ra mang trace của span đó. Chưa có metrics `saga_instances{state}` / `circuit_breaker_state` (để M4).
 - Phase 2 có thể thay worker bằng Temporal mà giữ nguyên các bước và RPC quota.

@@ -6,8 +6,17 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/nuroqzavitex/smarthire/services/application/internal/domain"
 )
+
+func tracer() trace.Tracer {
+	return otel.Tracer("github.com/nuroqzavitex/smarthire/services/application/internal/app")
+}
 
 const (
 	backoffBase    = time.Second
@@ -34,6 +43,12 @@ func (s *Service) ProcessDue(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	for _, sg := range sagas {
+		// The whole batch shares one lease; a slow step earlier in the batch
+		// can outlast it, and then another worker may already own this saga.
+		if !s.Now().UTC().Before(sg.NextRunAt) {
+			s.Logger.Info("saga lease expired before its step ran, skipped", "application_id", sg.ApplicationID)
+			continue
+		}
 		if err := s.runStep(ctx, sg); err != nil {
 			if ctx.Err() != nil {
 				return len(sagas), nil //nolint:nilerr // shutting down; the lease expires and another run resumes
@@ -47,8 +62,23 @@ func (s *Service) ProcessDue(ctx context.Context) (int, error) {
 	return len(sagas), nil
 }
 
-// runStep runs the saga's current step and records its outcome.
-func (s *Service) runStep(ctx context.Context, sg domain.Saga) error {
+// runStep runs the saga's current step and records its outcome, in one span
+// whose trace the outcome's events carry.
+func (s *Service) runStep(ctx context.Context, sg domain.Saga) (err error) {
+	step := string(sg.Step)
+	ctx, span := tracer().Start(ctx, "saga "+step, trace.WithAttributes(
+		attribute.String("application.id", sg.ApplicationID.String()),
+		attribute.String("saga.step", step),
+		attribute.String("saga.state", string(sg.State)),
+		attribute.Int("saga.attempts", sg.Attempts),
+	))
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "saga step failed")
+		}
+		span.End()
+	}()
 	now := s.Now().UTC()
 	var o outcome
 	switch {
@@ -169,9 +199,13 @@ func (s *Service) finish(ctx context.Context, claimed domain.Saga, o outcome, no
 			return err
 		}
 		if !ok {
-			s.Logger.Debug("saga changed during step, result dropped", "application_id", claimed.ApplicationID)
+			s.Logger.Info("saga changed during step, result dropped", "application_id", claimed.ApplicationID,
+				"step", string(claimed.Step))
 			return nil
 		}
+		s.Logger.Info("saga step finished", "application_id", claimed.ApplicationID, "step", string(claimed.Step),
+			"saga_state", string(o.saga.State), "next_step", string(o.saga.Step), "status", string(o.to),
+			"reason", o.reason, "last_error", o.saga.LastError)
 		if o.to == "" {
 			return nil
 		}
